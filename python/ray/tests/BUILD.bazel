@@ -637,6 +637,23 @@ py_test_module_list(
 )
 
 py_test_module_list(
+    size = "small",
+    files = [
+        "rdt/test_rdt_memory_lifecycle.py",
+        "rdt/test_rdt_store_memory.py",
+    ],
+    tags = [
+        "no_windows",
+        "rdt",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "large",
     files = [
         "rdt/test_nixl_agent_lock.py",
@@ -644,6 +661,7 @@ py_test_module_list(
         "rdt/test_nixl_memory_pool.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
+        "rdt/test_rdt_memory_integration.py",
     ],
     tags = [
         "exclusive",

@@ -33,6 +33,7 @@ ray_cc_library(
         ":object_recovery_manager",
         ":plasma_store_provider",
         ":profile_event",
+        ":rdt_memory_stats",
         ":reference_counter",
         ":shutdown_coordinator",
         ":task_event_buffer",
@@ -204,6 +205,20 @@ ray_cc_library(
         "//src/ray/util:logging",
         "//src/ray/util:network_util",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "rdt_memory_stats",
+    srcs = ["rdt_memory_stats.cc"],
+    hdrs = ["rdt_memory_stats.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/common:id",
+        "//src/ray/protobuf:common_cc_proto",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
 )

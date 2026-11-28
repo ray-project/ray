@@ -998,6 +998,24 @@ message ObjectRefInfo {
   uint64 attempt_number = 9;
 }
 
+// Process-local memory residency of an RDT (Ray Direct Transport) object.
+//
+// RDT tensors are stored out-of-band in a per-process RDT store rather than in
+// plasma, so they are reported separately from ObjectRefInfo. `tensor_bytes`
+// maps an actual local device string to the LOGICAL element bytes resident on
+// that device (sum of numel * itemsize); -1 means unknown/incomplete. These are
+// logical element bytes, not physical allocations or deduplicated storage.
+message RdtObjectMemoryInfo {
+  // Object id of the RDT object.
+  bytes object_id = 1;
+  // Logical element bytes grouped by actual local device string. -1 = unknown.
+  map<string, int64> tensor_bytes = 2;
+  // Number of successfully queued copies (including empty tensor lists).
+  int64 num_copies = 3;
+  // Number of queued failed receives that hold no tensors.
+  int64 num_errors = 4;
+}
+
 // Details about the allocation of a given resource. Some resources
 // (e.g., GPUs) have individually allocatable units that are represented
 // as "slots" here.
@@ -1059,6 +1077,12 @@ message CoreWorkerStats {
   int64 num_in_flight_arg_pinning_requests = 23;
   // Number of failed arg pinning requests
   int64 num_of_failed_arg_pinning_requests = 24;
+  // Process-local RDT (Ray Direct Transport) object memory residency, reported
+  // independently of object_refs. Populated only when include_memory_info is set.
+  repeated RdtObjectMemoryInfo rdt_objects = 25;
+  // Total number of RDT objects in this process, independent of any limit
+  // applied to rdt_objects.
+  int64 rdt_objects_total = 26;
 }
 
 // Resource usage reported by the node reporter.

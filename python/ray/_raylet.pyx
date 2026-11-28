@@ -27,6 +27,7 @@ from typing import (
     Callable,
     Dict,
     Generator,
+    List,
     Optional,
     Tuple,
     Union,
@@ -5329,6 +5330,47 @@ cdef class CoreWorker:
             num_bytes_used = (
                     CCoreWorkerProcess.GetCoreWorker().GetLocalMemoryStoreBytesUsed())
         return num_bytes_used
+
+    def set_rdt_object_memory_info(
+            self,
+            object_id: bytes,
+            device_bytes: List[Tuple[str, int]],
+            num_copies: int,
+            num_errors: int):
+        """Set the process-local RDT object memory snapshot.
+
+        Args:
+            object_id: The binary object ID (e.g. ``bytes.fromhex(obj_id)``).
+            device_bytes: Logical tensor element bytes grouped by actual local
+                device string. A value of -1 means unknown/incomplete.
+            num_copies: Number of successfully queued copies.
+            num_errors: Number of queued failed receives with no tensors.
+        """
+        cdef:
+            CObjectID c_object_id
+            c_vector[c_pair[c_string, int64_t]] c_device_bytes
+            c_pair[c_string, int64_t] entry
+            int64_t c_num_copies = num_copies
+            int64_t c_num_errors = num_errors
+
+        if len(object_id) != CObjectID.Size():
+            raise ValueError(
+                f"RDT object ID must contain {CObjectID.Size()} bytes")
+        c_object_id = CObjectID.FromBinary(object_id)
+
+        for device, size in device_bytes:
+            entry.first = device.encode("utf-8")
+            entry.second = size
+            c_device_bytes.push_back(entry)
+
+        with nogil:
+            # Use the safe process-level setter instead of GetCoreWorker(): this
+            # is a best-effort scalar metadata write that may run on a GC
+            # callback thread after shutdown, and GetCoreWorker() would
+            # QuickExit once the core worker is gone. The safe setter no-ops
+            # when the process has been torn down.
+            CCoreWorkerProcess.SetRdtObjectMemoryInfo(
+                c_object_id, c_device_bytes, c_num_copies, c_num_errors)
 
     def record_task_log_start(
             self, task_id: TaskID, int attempt_number,

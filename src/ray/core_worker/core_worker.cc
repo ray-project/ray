@@ -4725,6 +4725,14 @@ int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
   return memory_store_stats.num_local_objects_bytes;
 }
 
+void CoreWorker::SetRdtObjectMemoryInfo(
+    const ObjectID &object_id,
+    const std::vector<std::pair<std::string, int64_t>> &tensor_bytes,
+    int64_t num_copies,
+    int64_t num_errors) {
+  rdt_memory_stats_.Set(object_id, tensor_bytes, num_copies, num_errors);
+}
+
 void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -4769,6 +4777,9 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
     reference_counter_->AddObjectRefStats(
         plasma_store_provider_->UsedObjectsList(), stats, limit);
     task_manager_->AddTaskStatusInfo(stats);
+    // RDT residency is separate from object_refs; the request limit applies
+    // independently to the RDT table.
+    rdt_memory_stats_.AddToStats(stats, limit);
   }
 
   if (request.include_task_info()) {
