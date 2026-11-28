@@ -465,22 +465,41 @@ def test_include_row_hash_existing_column(
     ), "Generated hashes must overwrite the original column values"
 
 
+@pytest.mark.parametrize(
+    ("datasource_v2", "expected_names"),
+    [
+        pytest.param(False, ["row_hash", "val"], id="v1"),
+        pytest.param(True, ["val", "row_hash"], id="v2"),
+    ],
+    indirect=["datasource_v2"],
+)
 def test_include_row_hash_existing_column_with_projection(
-    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+    ray_start_regular_shared,
+    tmp_path,
+    target_max_block_size_infinite_or_default,
+    datasource_v2,
+    expected_names,
 ):
     """Column projection + pre-existing row_hash column should work."""
     path = os.path.join(tmp_path, "test.parquet")
-    table = pa.Table.from_pydict({"val": [1, 2], "row_hash": [10, 20]})
+    table = pa.Table.from_pydict({"row_hash": [10, 20], "val": [1, 2]})
     pq.write_table(table, path)
 
-    ds = ray.data.read_parquet(path, include_row_hash=True).select_columns(
-        ["val", "row_hash"]
-    )
-    schema_names = ds.schema().names
-    assert "val" in schema_names
-    assert "row_hash" in schema_names
-    rows = ds.take_all()
-    assert all(row["row_hash"] not in (10, 20) for row in rows)
+    ds = ray.data.read_parquet(path, include_row_hash=True)
+    assert ds.schema().names == expected_names
+    batch = ds.take_batch(batch_format="pyarrow")
+    assert batch.column_names == ds.schema().names
+    assert batch.schema.field("row_hash").type == pa.uint64()
+    assert batch.num_rows == 2
+    assert all(value not in (10, 20) for value in batch["row_hash"].to_pylist())
+    for columns in (["val", "row_hash"], ["row_hash"]):
+        projected = ds.select_columns(columns)
+        assert projected.schema().names == columns
+        assert (
+            projected.take_batch(batch_format="pyarrow")
+            .select(columns)
+            .equals(batch.select(columns))
+        )
 
 
 @pytest.mark.parametrize(

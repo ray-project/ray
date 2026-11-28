@@ -382,12 +382,32 @@ def _physical_op_names(physical_plan) -> List[str]:
     return names
 
 
-@pytest.mark.parametrize("set_config_after_read", [False, True])
+@pytest.fixture(
+    params=[pytest.param(False, id="before"), pytest.param(True, id="after")]
+)
+def read_with_path_checkpoint(request, restore_data_context):
+    def read(f_dir, config):
+        if not request.param:
+            restore_data_context.checkpoint_config = config
+        with pytest.warns(DeprecationWarning, match="`columns=` on `read_parquet`"):
+            ds = ray.data.read_parquet(
+                f_dir, columns=["id"], include_paths="source_file", merge_schema=True
+            )
+        if request.param:
+            assert "generated_id" not in ds.schema(fetch_if_missing=False).names
+            ds.context.checkpoint_config = config
+        return ds
+
+    return read
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
 def test_read_parquet_adds_generated_id_column(
     ray_start_10_cpus_shared,
+    datasource_v2,
     generate_sample_data_parquet,
     tmp_path,
-    set_config_after_read,
+    read_with_path_checkpoint,
 ):
     """A generated-ID config makes Parquet reads stamp every row with an ID,
     also when it's set on the dataset after ``read_parquet()``, as Ray Train
@@ -397,15 +417,7 @@ def test_read_parquet_adds_generated_id_column(
         checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
     )
     f_dir = generate_sample_data_parquet()
-    if set_config_after_read:
-        ds = ray.data.read_parquet(f_dir)
-        # Populate the schema cache before the config exists: the column
-        # must still show up in the schema afterwards.
-        assert "generated_id" not in ds.schema(fetch_if_missing=False).names
-        ds.context.checkpoint_config = config
-    else:
-        ray.data.DataContext.get_current().checkpoint_config = config
-        ds = ray.data.read_parquet(f_dir)
+    ds = read_with_path_checkpoint(f_dir, config)
 
     # The public schema matches the rows execution produces, without
     # executing anything.
@@ -413,12 +425,40 @@ def test_read_parquet_adds_generated_id_column(
 
     rows = ds.take_all()
     assert len(rows) == SAMPLE_DATA_NUM_ROWS
+    assert ds.schema().names == ["id", "source_file", "generated_id"]
+    assert all(
+        r["source_file"] == os.path.join(f_dir, "sample_data.parquet") for r in rows
+    )
+    assert all(
+        r["generated_id"]["file_name"] == "sample_data.parquet"
+        and r["generated_id"]["row_id"] == r["id"] % (SAMPLE_DATA_NUM_ROWS // 3)
+        for r in rows
+    )
     assert len({tuple(sorted(r["generated_id"].items())) for r in rows}) == len(rows)
 
     opted_out = ray.data.read_parquet(f_dir)
     opted_out.context.checkpoint_config = None
     assert "generated_id" not in opted_out.schema(fetch_if_missing=False).names
     assert "generated_id" not in opted_out.take_all()[0]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_read_parquet_path_conflicts_with_generated_id(
+    ray_start_10_cpus_shared,
+    datasource_v2,
+    generate_sample_data_parquet,
+    tmp_path,
+    read_with_path_checkpoint,
+):
+    config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="source_file"
+    )
+    ds = read_with_path_checkpoint(generate_sample_data_parquet(), config)
+    with pytest.raises(
+        InvalidCheckpointingConfig,
+        match="conflicts with an existing synthesized column",
+    ):
+        ds.take_all()
 
 
 @pytest.mark.parametrize(

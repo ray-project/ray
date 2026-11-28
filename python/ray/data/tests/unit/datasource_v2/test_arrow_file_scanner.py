@@ -58,10 +58,6 @@ def test_prune_input_split_matching_no_file():
     assert len(scanner.prune_input_split(manifest)) == 0
 
 
-class _SourceFileColumn(PathColumn):
-    name = "source_file"
-
-
 @pytest.mark.parametrize("scanner_cls", [ParquetScanner, OrcScanner])
 @pytest.mark.parametrize(
     "columns, projection, predicate, accepted, residual",
@@ -103,7 +99,7 @@ class _SourceFileColumn(PathColumn):
             col("path") == col("x"),
         ),
         (
-            (_SourceFileColumn(),),
+            (PathColumn(name="source_file"),),
             True,
             col("source_file") == "P",
             None,

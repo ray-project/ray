@@ -1,10 +1,10 @@
 """Columns a reader appends to each batch instead of reading them.
 
-``include_paths=True`` adds a ``path`` column and ``include_row_hash=True``
-adds ``row_hash``; a checkpoint ID column is the next one. Each used to be a
-boolean on the reader plus four hand-written steps: advertise the column in
-the schema, keep pyarrow from looking for it in the file, respect a
-projection that dropped it, and build it per batch. A
+``include_paths=True`` adds a ``path`` column (or a custom name with DSV2),
+and ``include_row_hash=True`` adds ``row_hash``; a checkpoint ID column is the
+next one. Each used to be a boolean on the reader plus four hand-written steps:
+advertise the column in the schema, keep pyarrow from looking for it in
+the file, respect a projection that dropped it, and build it per batch. A
 :class:`SynthesizedColumn` replaces the boolean, and the reader performs the
 four steps once for whatever columns it is given.
 
@@ -17,6 +17,7 @@ lets one batch span two row groups.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pyarrow as pa
 
@@ -83,7 +84,17 @@ class SynthesizedColumn(ABC):
             together, and the unit is the whole file.
     """
 
-    name: str
+    if TYPE_CHECKING:
+        # Accept both mutable fields and frozen dataclass fields. Keep this
+        # property out of runtime so dataclass initializers can assign name.
+        @property
+        @abstractmethod
+        def name(self) -> str:
+            """Column name as it appears in the output schema."""
+
+    else:
+        name: str
+
     type: pa.DataType
     requires_read_unit_boundaries: bool = False
 

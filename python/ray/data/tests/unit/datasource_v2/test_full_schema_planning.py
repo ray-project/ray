@@ -148,6 +148,21 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
     remote.remote.assert_called_once()
 
 
+def test_merge_file_schemas_transforms_before_merging():
+    metadata = {b"source": b"first"}
+    expected = pa.schema(
+        [pa.field("id", pa.int64(), metadata=metadata)], metadata=metadata
+    )
+    schemas = [
+        expected.append(pa.field("source_file", typ))
+        for typ in (pa.int64(), pa.string())
+    ]
+    actual = inference._merge_file_schemas(
+        ["first", "second"], schemas, "Parquet", transform_schema=lambda s: s.remove(1)
+    )
+    assert actual.equals(expected, check_metadata=True)
+
+
 def _configure_small_schema_plan(monkeypatch, *, threshold=0, io_concurrency=4):
     for suffix, value in dict(
         min_files=threshold,
