@@ -357,16 +357,16 @@ class JobSupervisor:
         driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
         driver_node_id = ray.get_runtime_context().get_node_id()
 
-        await self._job_info_client.put_status(
-            self._job_id,
-            JobStatus.RUNNING,
-            jobinfo_replace_kwargs={
-                "driver_agent_http_address": driver_agent_http_address,
-                "driver_node_id": driver_node_id,
-            },
-        )
-
         try:
+            await self._job_info_client.put_status(
+                self._job_id,
+                JobStatus.RUNNING,
+                jobinfo_replace_kwargs={
+                    "driver_agent_http_address": driver_agent_http_address,
+                    "driver_node_id": driver_node_id,
+                },
+            )
+
             # Configure environment variables for the child process.
             env = os.environ.copy()
             # Remove internal Ray flags. They present because JobSuperVisor itself is
