@@ -406,10 +406,10 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
                                   std::to_string(runtime_env_hash));
   }
 
-  if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
+  const bool has_runtime_env_context =
+      serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty();
+  if (has_runtime_env_context) {
     worker_command_args.push_back("--language=" + Language_Name(language));
-    worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                  serialized_runtime_env_context);
   } else if (language == Language::PYTHON && worker_command_args.size() >= 2 &&
              worker_command_args[1].find(kSetupWorkerFilename) != std::string::npos) {
     // Check that the arg really is the path to the setup worker before erasing it, to
@@ -439,6 +439,12 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   }
 
   env.emplace(kEnvVarKeyRayletPid, std::to_string(GetPID()));
+
+  // The context holds `env_vars` values, so keep it out of the command line, which
+  // any local user can read.
+  if (has_runtime_env_context) {
+    env.emplace(kEnvVarKeySerializedRuntimeEnvContext, serialized_runtime_env_context);
+  }
 
   // TODO(SongGuyang): Maybe Python and Java also need native library path in future.
   if (language == Language::CPP) {

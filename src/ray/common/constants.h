@@ -67,6 +67,10 @@ constexpr int kPublicDNSServerPort = 53;
 
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
 constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
+/// Should be kept in sync with SERIALIZED_RUNTIME_ENV_CONTEXT_ENV_VAR in
+/// ray_constants.py
+constexpr char kEnvVarKeySerializedRuntimeEnvContext[] =
+    "RAY_SERIALIZED_RUNTIME_ENV_CONTEXT";
 
 constexpr char kEnvVarKeyGrpcThreadCount[] = "RAY_num_grpc_internal_threads";
 
