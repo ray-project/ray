@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import platform
 import signal
+import subprocess
 import sys
 import time
 
@@ -195,6 +196,53 @@ tasks = [f.remote() for _ in range(num_cpus)]
     wait_for_condition(
         lambda: len(get_all_ray_worker_processes()) == 0, timeout=WAIT_TIMEOUT
     )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="Kernel fate-sharing is Linux-only."
+)
+def test_ray_processes_die_with_driver(tmp_path):
+    """Make sure the processes ray.init() starts are killed when the driver is."""
+    pids_path = tmp_path / "pids"
+    driver = f"""
+import os
+import time
+import ray
+ray.init(num_cpus=1)
+all_processes = ray._private.worker._global_node.all_processes
+pids = [info.process.pid for infos in all_processes.values() for info in infos]
+with open("{pids_path}.tmp", "w") as f:
+    f.write(" ".join(map(str, pids)))
+os.rename("{pids_path}.tmp", "{pids_path}")
+time.sleep(600)
+"""
+    p = run_string_as_driver_nonblocking(driver)
+    wait_for_condition(pids_path.exists, timeout=60)
+    procs = [psutil.Process(int(pid)) for pid in pids_path.read_text().split()]
+    p.kill()
+    p.wait()
+    wait_for_condition(
+        lambda: all(
+            not proc.is_running() or proc.status() == psutil.STATUS_ZOMBIE
+            for proc in procs
+        ),
+        timeout=WAIT_TIMEOUT,
+    )
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="Kernel fate-sharing is Linux-only."
+)
+def test_fate_share_exec_exits_if_parent_died(tmp_path):
+    # A pid other than its parent's is what the launcher sees once its parent has
+    # died; it must exit rather than start a process nothing would kill.
+    marker = tmp_path / "ran"
+    launcher = os.path.join(
+        os.path.dirname(ray._private.services.__file__), "fate_share_exec.py"
+    )
+    command = [sys.executable, "-I", "-S", launcher, str(os.getppid())]
+    assert subprocess.call(command + ["touch", str(marker)]) == 1
+    assert not marker.exists()
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")

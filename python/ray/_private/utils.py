@@ -1005,23 +1005,6 @@ def detect_fate_sharing_support():
     return result
 
 
-def set_kill_on_parent_death_linux():
-    """Ensures this process dies if its parent dies (fate-sharing).
-
-    Linux-only. Must be called in preexec_fn (i.e. by the child).
-    """
-    if detect_fate_sharing_support_linux():
-        import signal
-
-        PR_SET_PDEATHSIG = 1
-        if linux_prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
-            import ctypes
-
-            raise OSError(ctypes.get_errno(), "prctl(PR_SET_PDEATHSIG) failed")
-    else:
-        assert False, "PR_SET_PDEATHSIG used despite being unavailable"
-
-
 def set_kill_child_on_death_win32(child_proc: subprocess.Popen):
     """Ensures the child process dies if this process dies (fate-sharing).
 
