@@ -5,6 +5,7 @@ import sys
 
 import jsonschema
 import pytest
+from pydantic import ValidationError
 
 from ray._common.test_utils import (
     run_string_as_driver,
@@ -19,6 +20,21 @@ from ray.dashboard import dashboard
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 from ray.dashboard.modules.job.job_head import RayActivityResponse
 from ray.dashboard.tests.conftest import *  # noqa
+
+
+@pytest.mark.parametrize("is_active", ["ACTIVE", "ERROR"])
+def test_ray_activity_response_requires_reason(is_active):
+    with pytest.raises(ValidationError, match="Reason is required"):
+        RayActivityResponse(is_active=is_active, timestamp=0)
+
+
+def test_ray_activity_response_optional_reason_and_extra_fields():
+    response = RayActivityResponse(is_active="INACTIVE", timestamp=0, extra_field=1)
+    assert response.reason is None
+    assert response.extra_field == 1
+
+    response = RayActivityResponse(is_active="ACTIVE", timestamp=0, reason="running")
+    assert response.reason == "running"
 
 
 @pytest.fixture

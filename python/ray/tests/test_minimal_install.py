@@ -3,10 +3,12 @@
 Tests that are specific to minimal installations.
 """
 
-import importlib
 import itertools
 import os
+import pathlib
+import subprocess
 import sys
+import textwrap
 import unittest.mock as mock
 from typing import Dict
 
@@ -104,9 +106,112 @@ def test_pydantic_v1_is_unsupported():
     mock_modules = _make_mock_pydantic_modules("1.9.0")
 
     with mock.patch.dict("sys.modules", mock_modules):
-        sys.modules.pop("ray._common.pydantic_compat", None)
+        from ray.util import serialization_addons
+
         with pytest.raises(ImportError, match="Pydantic v1 is no longer supported"):
-            importlib.import_module("ray._common.pydantic_compat")
+            serialization_addons.apply(mock.MagicMock())
+
+
+def _run_without_pydantic(code: str):
+    """Run `code` in a new interpreter where importing pydantic fails.
+
+    This works whether or not pydantic is installed, because a `None` entry in
+    `sys.modules` makes `import pydantic` raise `ModuleNotFoundError`.
+    """
+    script = "import sys\nsys.modules['pydantic'] = None\n" + textwrap.dedent(code)
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_state_and_serialization_work_without_pydantic():
+    _run_without_pydantic(
+        """
+        import dataclasses
+        from unittest import mock
+
+        from ray.dashboard.modules.job.pydantic_models import (
+            DriverInfo,
+            JobDetails,
+            JobType,
+        )
+        from ray.dashboard.modules.reporter.reporter_models import StatsPayload
+        from ray.util import serialization_addons
+        from ray.util.state.common import GetLogOptions, JobState, ListApiOptions
+
+        assert (DriverInfo, JobDetails, JobType, StatsPayload) == (None,) * 4
+
+        # The state dataclasses fall back to the standard library, which has to
+        # generate __init__ and call __post_init__.
+        assert dataclasses.is_dataclass(ListApiOptions)
+        assert not hasattr(ListApiOptions, "__pydantic_fields__")
+        assert ListApiOptions(limit=3, timeout=10).limit == 3
+        # __post_init__ scales the timeout down.
+        assert ListApiOptions(limit=3, timeout=10).timeout == 8
+        assert GetLogOptions(timeout=1, node_id="a", filename="f").lines == 1000
+        assert JobState.list_columns() == []
+
+        context = mock.MagicMock()
+        serialization_addons.apply(context)
+        for call in context._register_cloudpickle_serializer.call_args_list:
+            assert not call.args[0].__module__.startswith("pydantic")
+        """
+    )
+
+
+def test_dashboard_modules_load_without_pydantic():
+    """`get_all_modules` only tolerates `ModuleNotFoundError` from a module.
+
+    A module that needs pydantic must raise it, whichever optional dependencies are
+    installed, or the dashboard fails to start.
+    """
+    _run_without_pydantic(
+        """
+        from ray.dashboard.utils import DashboardHeadModule, get_all_modules
+
+        modules = {m.__name__ for m in get_all_modules(DashboardHeadModule)}
+        assert "UsageStatsHead" in modules, modules
+        assert "JobHead" not in modules, modules
+        """
+    )
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "ray.dashboard.modules.job.job_head",
+        "ray.dashboard.modules.log.log_manager",
+    ],
+)
+def test_modules_requiring_pydantic_raise_module_not_found(module: str):
+    _run_without_pydantic(
+        f"""
+        import importlib
+
+        try:
+            importlib.import_module("{module}")
+        except ModuleNotFoundError:
+            pass
+        else:
+            raise RuntimeError("{module} imported without pydantic")
+        """
+    )
+
+
+def test_pydantic_compat_is_removed():
+    import ray
+
+    package_root = pathlib.Path(ray.__file__).parent
+    assert not (package_root / "_common" / "pydantic_compat.py").exists()
+
+    references = [
+        str(path.relative_to(package_root))
+        for path in package_root.rglob("*.py")
+        if path.name != "test_minimal_install.py"
+        and "pydantic_compat" in path.read_text(encoding="utf-8", errors="ignore")
+    ]
+    assert references == []
 
 
 if __name__ == "__main__":
