@@ -117,8 +117,7 @@ void GcsInternalKVManager::HandleInternalKVExists(
   auto status = ValidateKey(request.key());
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  }
-  {
+  } else {
     auto callback = [reply, send_reply_callback](bool exists) {
       reply->set_exists(exists);
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
