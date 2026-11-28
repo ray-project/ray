@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import numbers
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ import pyarrow
 
 import ray
 from ray._private.dict import unflattened_lookup
+from ray.air._internal.util import is_nan
 from ray.air.constants import (
     EXPR_ERROR_PICKLE_FILE,
     EXPR_PROGRESS_FILE,
@@ -19,6 +21,10 @@ from ray.air.constants import (
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
+
+
+def _is_nan(value: Any) -> bool:
+    return isinstance(value, numbers.Number) and is_nan(value)
 
 
 @dataclass
@@ -256,7 +262,8 @@ class Result:
     ) -> Optional["ray.tune.Checkpoint"]:
         """Get the best checkpoint from this trial based on a specific metric.
 
-        Any checkpoints without an associated metric value will be filtered out.
+        Any checkpoints without an associated metric value, or with a ``nan``
+        value, will be filtered out.
 
         Args:
             metric: The key for checkpoints to order on.
@@ -286,5 +293,15 @@ class Result:
                 f"Invalid metric name {metric}! "
                 f"You may choose from the following metrics: {self.metrics.keys()}."
             )
+
+        # Filter out nan. Every comparison with nan is False, so min/max would
+        # return a nan checkpoint that comes first in the list.
+        valid_checkpoints = [
+            ckpt_info
+            for ckpt_info in valid_checkpoints
+            if not _is_nan(unflattened_lookup(metric, ckpt_info[1]))
+        ]
+        if not valid_checkpoints:
+            return None
 
         return op(valid_checkpoints, key=lambda x: unflattened_lookup(metric, x[1]))[0]

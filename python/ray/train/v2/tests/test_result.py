@@ -203,6 +203,42 @@ def test_get_best_checkpoint_nested_metrics():
     )
 
 
+@pytest.mark.parametrize("mode,expected", [("min", "ckpt1"), ("max", "ckpt2")])
+def test_get_best_checkpoint_skips_nan(mode, expected):
+    """The checkpoint manager ranks nan scores worst, so they come first in
+    best_checkpoints. They must not be returned as the best checkpoint."""
+    res = Result(
+        metrics={},
+        checkpoint=None,
+        error=None,
+        path="/bucket/path",
+        best_checkpoints=[
+            (Checkpoint("/bucket/path/ckpt0"), {"iter": 0, "metric": float("nan")}),
+            (Checkpoint("/bucket/path/ckpt1"), {"iter": 1, "metric": 1.0}),
+            (Checkpoint("/bucket/path/ckpt2"), {"iter": 2, "metric": 2.0}),
+        ],
+    )
+    assert (
+        res.get_best_checkpoint(metric="metric", mode=mode).path
+        == f"/bucket/path/{expected}"
+    )
+
+
+@pytest.mark.parametrize("mode", ["min", "max"])
+def test_get_best_checkpoint_all_nan(mode):
+    res = Result(
+        metrics={},
+        checkpoint=None,
+        error=None,
+        path="/bucket/path",
+        best_checkpoints=[
+            (Checkpoint("/bucket/path/ckpt0"), {"iter": 0, "metric": float("nan")}),
+            (Checkpoint("/bucket/path/ckpt1"), {"iter": 1, "metric": float("nan")}),
+        ],
+    )
+    assert res.get_best_checkpoint(metric="metric", mode=mode) is None
+
+
 @pytest.mark.parametrize("path_type", ["str", "PathLike"])
 @pytest.mark.parametrize("pass_storage_filesystem", [True, False])
 @pytest.mark.parametrize("trailing_slash", [False, True])
