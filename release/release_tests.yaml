@@ -168,6 +168,25 @@
     timeout: 3600
     script: python nccom_test_multinode.py
 
+# Runs PyTorch on the Trainium3 chips from Ray tasks, through TorchNeuron. Needs
+# an EC2 Capacity Block for Trainium3: see compute_trn3_1x_aws.yaml.
+- name: neuron_trainium3_torch_accelerator
+  python: "3.13"
+  team: reef
+  group: neuron
+  frequency: manual
+  working_dir: neuron_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: neuron
+    cluster_compute: compute_trn3_1x_aws.yaml
+
+  run:
+    timeout: 3600
+    script: python trainium_torch_accelerator.py --platform trn3
+
 - name: hello_world_custom_byod
   python: "3.10"
   team: reef
