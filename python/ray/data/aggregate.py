@@ -581,6 +581,15 @@ class AsList(VectorizedAggregateFnV2[List, List]):
     ) -> AccumulatorType:
         return current_accumulator + new
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        if not isinstance(self._target_col_name, str):
+            return None
+        try:
+            in_type = input_schema.field(self._target_col_name).type
+        except (KeyError, ValueError):
+            return None
+        return pa.field(self.name, pa.list_(in_type), nullable=True)
+
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
         return BlockColumnAccessor.for_column(accumulator_col).flatten()
 
@@ -1140,6 +1149,14 @@ class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
 
         return accessor.quantile(q=self._q, ignore_nulls=self._ignore_nulls)
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return _agg_output_field(
+            self.name,
+            input_schema,
+            self._target_col_name,
+            lambda arr: pc.quantile(arr, q=self._q),
+        )
+
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
         # Combine all the lists in a column into a single value (ie flatten it)
         return BlockColumnAccessor.for_column(accumulator_col).flatten()
@@ -1227,6 +1244,17 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
 
     def combine(self, current_accumulator: Set[Any], new: Set[Any]) -> Set[Any]:
         return self._to_set(current_accumulator) | self._to_set(new)
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        if not isinstance(self._target_col_name, str):
+            return None
+        try:
+            in_type = input_schema.field(self._target_col_name).type
+        except (KeyError, ValueError):
+            return None
+        if pa.types.is_nested(in_type) or isinstance(in_type, pa.ExtensionType):
+            return None
+        return pa.field(self.name, pa.list_(in_type), nullable=True)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
         # Only the plain (scalar-column, no list-encoding) form vectorizes; the
@@ -1389,6 +1417,9 @@ class CountDistinct(Unique):
             The number of distinct values.
         """
         return len(accumulator)
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.int64(), nullable=False)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
         # Same gate as Unique, but the `count_distinct` kernel returns the count.
@@ -1702,6 +1733,9 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
 
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.float64(), nullable=True)
+
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
         return missing_pct_spec() if isinstance(self._target_col_name, str) else None
 
@@ -1801,6 +1835,9 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         if accumulator[1] == 0:
             return None
         return (accumulator[0] / accumulator[1]) * 100.0
+
+    def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        return pa.field(self.name, pa.float64(), nullable=True)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
         return zero_pct_spec() if isinstance(self._target_col_name, str) else None
@@ -2139,11 +2176,10 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
 
         values: List[Any] = []
         counts: List[int] = []
-        # Null accounting differs by block type: a pandas column drops nulls
-        # from `value_counts` entirely, while an Arrow column reports them as
-        # entries (None for nulls, NaN as a float value). Strip null-ish
-        # entries here and re-add one canonical `None` entry below, so both
-        # block types produce the same accumulator.
+        # Both block types now report nulls from `value_counts` as a single
+        # canonical `None` entry. Strip null-ish entries here and re-add one
+        # `None` entry below, so the accumulator does not depend on block type
+        # and honours `ignore_nulls`.
         null_count_from_entries = 0
         for value, count in zip(value_counts["values"], value_counts["counts"]):
             if is_null(value):

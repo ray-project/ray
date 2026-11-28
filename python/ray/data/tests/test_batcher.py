@@ -14,6 +14,7 @@ from ray.data._internal.batcher import (
     Batcher,
     ShufflingBatcher,
 )
+from ray.data._internal.block_batching.block_batching import _numpy_copy_is_deep
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
@@ -48,6 +49,34 @@ def test_batching_arrow_ipc_bytes(ensure_copy, max_chunksize, prefix_rows):
         [2, 2, 1] if prefix_rows == 0 else [2, 2, 2]
     )
     assert pa.concat_tables(batches).equals(expected)
+
+
+@pytest.mark.parametrize("batch_size", [None, 4])
+@pytest.mark.parametrize("numpy_format", [False, True])
+@pytest.mark.parametrize(
+    "values,copy_skippable",
+    [(list(range(4)), True), ([[i] for i in range(4)], False)],
+)
+def test_batcher_skip_copy(batch_size, numpy_format, values, copy_skippable):
+    block = pa.table({"a": values})
+    batcher = Batcher(
+        batch_size,
+        ensure_copy=True,
+        # What batch_blocks passes for batch_format='numpy'.
+        skip_copy=_numpy_copy_is_deep if numpy_format else None,
+    )
+    batcher.add(block)
+    batcher.done_adding()
+    batch = batcher.next_batch()
+
+    def data_address(table):
+        return table.column("a").chunk(0).buffers()[-1].address
+
+    # The block copy is skipped only for columns that the later NumPy copy
+    # fully copies.
+    copy_skipped = data_address(batch) == data_address(block)
+    assert copy_skipped == (numpy_format and copy_skippable)
+    assert batch.equals(block)
 
 
 def test_shuffling_batcher():

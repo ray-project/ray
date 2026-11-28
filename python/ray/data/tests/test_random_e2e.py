@@ -106,12 +106,10 @@ def test_random_block_order(
     assert results == expected
 
 
-# NOTE: All tests above share a Ray cluster, while the tests below do not. These
-# tests should only be carefully reordered to retain this invariant!
-
-
 def test_random_shuffle(
-    shutdown_only, configure_shuffle_method, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
 ):
     # Assert random 2 distinct random-shuffle pipelines yield different orders
     r1 = ray.data.range(100).random_shuffle().take(999)
@@ -168,8 +166,28 @@ def test_random_shuffle(
     assert r1.take() == ds.take()
 
 
+def test_seeded_random_shuffle_ignores_arrival_order(
+    ray_start_regular_shared_2_cpus,
+    configure_shuffle_method,
+    disable_fallback_to_object_extension,
+):
+    """A seed gives the same order even when read tasks finish out of order."""
+
+    def finish_last_block_first(batch):
+        time.sleep(0.2 * (4 - batch["id"][0] // 20))
+        return batch
+
+    def shuffled(fn):
+        ds = ray.data.range(100, override_num_blocks=5).map_batches(fn)
+        return ds.random_shuffle(seed=0).take_all()
+
+    assert shuffled(lambda batch: batch) == shuffled(finish_last_block_first)
+
+
+# shutdown_only stops the shared cluster after this test, so the tests below can
+# start their own.
 def test_random_shuffle_check_random(
-    shutdown_only, disable_fallback_to_object_extension
+    ray_start_regular_shared_2_cpus, shutdown_only, disable_fallback_to_object_extension
 ):
     # Rows from the same input should not be contiguous in the final output.
     num_files = 10
@@ -220,6 +238,10 @@ def test_random_shuffle_check_random(
             prev = x
 
 
+# NOTE: All tests above share a Ray cluster, while the tests below do not. These
+# tests should only be carefully reordered to retain this invariant!
+
+
 def test_random_shuffle_with_custom_resource(
     ray_start_cluster, configure_shuffle_method, disable_fallback_to_object_extension
 ):
@@ -250,10 +272,10 @@ def test_random_shuffle_spread(
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
-        num_cpus=10,
+        num_cpus=2,
         _system_config={"max_direct_call_object_size": 0},
     )
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(resources={"bar:2": 100}, num_cpus=2)
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)

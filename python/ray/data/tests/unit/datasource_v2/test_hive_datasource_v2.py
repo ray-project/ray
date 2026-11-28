@@ -90,7 +90,10 @@ def test_query_schema_does_not_request_table_metadata(monkeypatch):
 
 def test_table_schema_uses_hive_metadata(monkeypatch):
     spec = HiveReadSpec(lambda: object(), table="events")
-    expected = pa.schema([("id", pa.int64())])
+    expected = pa.schema(
+        [pa.field("id", pa.int64(), metadata={b"field": b"id"}), ("name", pa.string())],
+        metadata={b"source": b"hive"},
+    )
     calls = []
     monkeypatch.setattr(
         hive_datasource_v2,
@@ -99,6 +102,11 @@ def test_table_schema_uses_hive_metadata(monkeypatch):
     )
     assert HiveDatasourceV2(spec).infer_schema(None) == expected
     assert calls == [spec]
+    scanner = HiveDatasourceV2(spec).create_scanner(expected)
+    assert isinstance(scanner, hive_datasource_v2._HiveTableScanner)
+    scanner = scanner.prune_columns(["id"])
+    schema = cloudpickle.loads(cloudpickle.dumps(scanner)).read_schema()
+    assert schema.equals(expected.remove(1), check_metadata=True)
 
 
 @pytest.mark.parametrize("paths", [[], ["other://read"], ["hive://read"] * 2])

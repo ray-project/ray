@@ -109,7 +109,7 @@ def _temporary_table(options, columns, insert_clause, storage_clause=""):
                 connection.close()
 
 
-def test_hive_table_query_limit_and_ignored_block_hint():
+def test_hive_table_query_limit_and_ignored_block_hint(tmp_path, shutdown_only):
     options = _connection_options()
     connection_factory = _make_connection_factory(options)
     with _temporary_table(
@@ -162,6 +162,55 @@ def test_hive_table_query_limit_and_ignored_block_hint():
                 ).count()
                 == 1
             )
+
+            trace = tmp_path / "statements"
+            table_sql = f"`default`.`{table}`"
+
+            def source(limit=None):
+                trace.write_text("")
+                return ray.data.read_hive(
+                    table,
+                    limit=limit,
+                    connection_factory=_traced_factory(options, trace),
+                )
+
+            rows = source(2).select_columns(["name"]).limit(1).take_all()
+            assert len(rows) == 1 and set(rows[0]) == {"name"}
+            assert trace.read_text() == f"SELECT `name` FROM {table_sql} LIMIT 1\n"
+
+            result = source().select_columns([]).materialize()
+            assert result.count() == 2 and result.schema().names == []
+            assert (
+                trace.read_text() == f"SELECT 1 AS `__ray_hive_row` FROM {table_sql}\n"
+            )
+            assert source().limit(0).take_all() == []
+            assert trace.read_text() == ""
+
+            with _temporary_table(
+                options,
+                "`a+b` BIGINT, ab BIGINT, `类别` BIGINT, `a``b` BIGINT",
+                "SELECT 11, 22, 33, 44",
+                storage_clause="STORED AS ORC",
+            ) as (special_table, _):
+                for mode in ("column", "none"):
+                    trace.write_text("")
+                    columns = ["a+b", "类别", "a`b"]
+                    dataset = (
+                        ray.data.read_hive(
+                            special_table,
+                            connection_factory=_traced_factory(options, trace, mode),
+                        )
+                        .select_columns(columns)
+                        .limit(1)
+                    )
+                    assert [dict(row) for row in dataset.take_all()] == [
+                        {"a+b": 11, "类别": 33, "a`b": 44}
+                    ]
+                    assert dataset.schema().names == columns
+                    assert (
+                        trace.read_text()
+                        == f"SELECT * FROM `default`.`{special_table}` LIMIT 1\n"
+                    )
         finally:
             ray.shutdown()
 
@@ -299,6 +348,37 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
     untrusted_ca_options["ca_cert"] = None
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
         _connect(untrusted_ca_options)
+
+
+def _traced_factory(options, trace_path, quoted_identifiers=None):
+    base_factory = _make_connection_factory(options)
+
+    def factory():
+        class Proxy:
+            def __init__(self, obj):
+                self.obj = obj
+
+            def __getattr__(self, name):
+                return getattr(self.obj, name)
+
+        class Cursor(Proxy):
+            def execute(self, statement):
+                with trace_path.open("a") as stream:
+                    stream.write(statement + "\n")
+                return self.obj.execute(statement)
+
+        class Connection(Proxy):
+            def cursor(self, *, user):
+                cursor = self.obj.cursor(user=user)
+                if quoted_identifiers is not None:
+                    cursor.execute(
+                        "SET hive.support.quoted.identifiers=" + quoted_identifiers
+                    )
+                return Cursor(cursor)
+
+        return Connection(base_factory())
+
+    return factory
 
 
 if __name__ == "__main__":

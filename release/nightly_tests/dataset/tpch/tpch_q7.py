@@ -34,22 +34,12 @@ def main(args):
         # This implementation keeps a mostly linear pipeline:
         # (nation->customer)->orders->lineitem->supplier->nation.
 
-        # Load all required tables with early column pruning to reduce
-        # intermediate data size (projection pushes down to Parquet reader)
-        # TODO: Remove manual projection once we support proper projection derivation
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_nationkey"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_suppkey", "l_shipdate", "l_extendedprice", "l_discount"]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_custkey"]
-        )
-        customer = load_table("customer", args.sf).select_columns(
-            ["c_custkey", "c_nationkey"]
-        )
-        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
+        # Load tables. Projection pushdown derives the columns each read needs.
+        supplier = load_table("supplier", args.sf)
+        lineitem = load_table("lineitem", args.sf)
+        orders = load_table("orders", args.sf)
+        customer = load_table("customer", args.sf)
+        nation = load_table("nation", args.sf)
 
         # Q7 parameters
         date1 = datetime(1995, 1, 1)
@@ -65,6 +55,8 @@ def main(args):
             right_on=("c_nationkey",),
         )
         customer_nation = customer_nation.rename_columns({"n_name": "n_name_cust"})
+        # Drop nation's other columns so the second nation join does not
+        # collide on them.
         customer_nation = customer_nation.select_columns(["c_custkey", "n_name_cust"])
 
         orders_customer = orders.join(
@@ -74,7 +66,7 @@ def main(args):
             on=("o_custkey",),
             right_on=("c_custkey",),
             left_suffix="",
-        ).select_columns(["o_orderkey", "n_name_cust"])
+        )
 
         # Join lineitem with orders and filter by date
         lineitem_filtered = lineitem.filter(
@@ -86,8 +78,6 @@ def main(args):
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
-        ).select_columns(
-            ["l_suppkey", "l_shipdate", "l_extendedprice", "l_discount", "n_name_cust"]
         )
 
         # Keep supplier join and supplier-nation join in the same linear pipeline.
@@ -97,15 +87,6 @@ def main(args):
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
-        )
-        lineitem_supplier = lineitem_supplier.select_columns(
-            [
-                "l_shipdate",
-                "l_extendedprice",
-                "l_discount",
-                "n_name_cust",
-                "s_nationkey",
-            ]
         )
 
         ds = lineitem_supplier.join(

@@ -330,14 +330,9 @@ def test_tensors_shuffle_and_join(ray_start_regular_shared, tensor_format_contex
 def test_tensors_top_n_empty_result(ray_start_regular_shared, tensor_format_context):
     # The Top-N merge builds an empty block from the schema when no rows are
     # left, which failed for native tensor columns on pyarrow 25+.
-    from ray.data._internal.logical.rules.top_n_rewrite import (
-        TOP_N_REWRITE_ENABLED_CONFIG_KEY,
-    )
     from ray.data.expressions import col
 
-    ray.data.DataContext.get_current().set_config(
-        TOP_N_REWRITE_ENABLED_CONFIG_KEY, True
-    )
+    ray.data.DataContext.get_current().enable_top_n_rewrite = True
     arr = np.arange(64).reshape((4, 4, 4))
     ds = ray.data.from_arrow(pa.table({"a": TensorArray(arr), "k": [0, 1, 0, 1]}))
     out = ds.filter(expr=col("k") < 0).sort("k").limit(2)

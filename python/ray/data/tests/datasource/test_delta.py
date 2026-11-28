@@ -1,17 +1,35 @@
+import json
 import os
 from unittest import mock
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 
 import ray
 from ray.data import Schema
+from ray.data._internal.object_extensions.arrow import (
+    ArrowPythonObjectArray,
+    _contains_pickle_object_type,
+)
 from ray.data._internal.util import rows_same
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.delta_test_utils import write_column_mapped_table
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+# Every test runs with the V1 and the DataSourceV2 reader.
+pytestmark = pytest.mark.usefixtures("datasource_v2")
+
+# For tests that take the V1 path with either reader.
+_V1_ONLY = pytest.mark.parametrize("datasource_v2", [False], indirect=True)
+
+
+@pytest.fixture(autouse=True)
+def _delta_follows_use_datasource_v2(restore_data_context):
+    """``read_delta`` picks its reader by ``use_datasource_v2`` alone."""
+    restore_data_context._use_delta_datasource_v2 = True
 
 
 @pytest.mark.parametrize(
@@ -141,16 +159,87 @@ def test_delta_read_storage_options(tmp_path, storage_options):
     assert rows_same(ds.to_pandas(), df)
 
 
-def test_delta_read_empty_table(tmp_path):
+def _write_empty_table(tmp_path) -> str:
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "tmp_test_delta_empty")
-    write_deltalake(path, pa.table({"x": pa.array([], type=pa.int64())}))
+    write_deltalake(
+        path, pa.schema([("x", pa.int64()), ("y", pa.string())]).empty_table()
+    )
+    return path
 
-    ds = ray.data.read_delta(path)
+
+def test_delta_read_empty_table(tmp_path):
+    ds = ray.data.read_delta(_write_empty_table(tmp_path))
+
     assert ds.count() == 0
+    assert ds.take_all() == []
 
 
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_delta_read_empty_table_takes_its_schema_from_the_log(tmp_path):
+    """The V1 reader takes the schema from the data files, and an empty table
+    has none."""
+    ds = ray.data.read_delta(_write_empty_table(tmp_path))
+
+    assert ds.schema().names == ["x", "y"]
+
+
+@_V1_ONLY
+def test_delta_read_uses_v1_without_datasource_v2(tmp_path):
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "tmp_test_delta_v1")
+    write_deltalake(path, pa.table({"x": [1]}))
+
+    ds = ray.data.read_delta(path).materialize()
+
+    assert "ReadFilesDeltaV2" not in ds.stats()
+
+
+def test_delta_read_does_not_unpickle_a_tampered_data_file(tmp_path):
+    """A data file swapped for one with a pickled-object column must not run
+    its pickle. Both readers read data files with the log's schema, so the
+    column comes back as plain bytes."""
+    from deltalake import DeltaTable, write_deltalake
+
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    path = os.path.join(tmp_path, "tmp_test_delta_tampered")
+    write_deltalake(path, pa.table({"id": [1, 2], "obj": [b"a", b"b"]}))
+    (data_file,) = pa.table(DeltaTable(path).get_add_actions(flatten=True))[
+        "path"
+    ].to_pylist()
+    pq.write_table(
+        pa.table(
+            {"id": [1, 2], "obj": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
+        ),
+        os.path.join(path, data_file),
+    )
+    # Whoever can swap a data file can also change its size in the log, which
+    # readers trust when they open the file.
+    log_path = os.path.join(path, "_delta_log", f"{0:020d}.json")
+    with open(log_path) as f:
+        actions = [json.loads(line) for line in f]
+    for action in actions:
+        if "add" in action:
+            action["add"]["size"] = os.path.getsize(os.path.join(path, data_file))
+    with open(log_path, "w") as f:
+        f.write("".join(json.dumps(action) + "\n" for action in actions))
+
+    batches = list(ray.data.read_delta(path).iter_batches(batch_format="pyarrow"))
+
+    assert sum(batch.num_rows for batch in batches) == 2
+    for batch in batches:
+        assert not _contains_pickle_object_type(batch.schema.field("obj").type)
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
+@_V1_ONLY
 def test_delta_read_rejects_multiple_paths():
     with pytest.raises(ValueError, match="Only a single Delta Lake table path"):
         ray.data.read_delta(["path1", "path2"])
@@ -165,11 +254,13 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
     has to point at the table property, not at a library upgrade.
 
     deltalake cannot *write* a table declaring the feature either, so the
-    protocol error is injected rather than provoked; what is under test is
-    Ray's translation of it.
+    feature and the protocol error are injected rather than provoked; what is
+    under test is Ray's translation of it. The DataSourceV2 reader leaves such
+    a table to the V1 reader, so both readers fail the same way.
     """
     from deltalake import write_deltalake
     from deltalake.exceptions import DeltaProtocolError
+    from deltalake.table import ProtocolVersions
 
     path = os.path.join(tmp_path, "tmp_test_delta_dv_message")
     write_deltalake(path, pa.table({"id": [1, 2, 3]}))
@@ -178,8 +269,11 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
         "The table has set these reader features: {'deletionVectors'} but these "
         "are not yet supported by the deltalake reader."
     )
+    dv_protocol = ProtocolVersions(3, 7, ["deletionVectors"], ["deletionVectors"])
 
     with mock.patch(
+        "deltalake.DeltaTable.protocol", return_value=dv_protocol
+    ), mock.patch(
         "deltalake.DeltaTable.to_pyarrow_dataset", side_effect=protocol_error
     ):
         with pytest.raises(RuntimeError) as excinfo:
@@ -279,6 +373,7 @@ def _supports_file_pruning_predicate() -> bool:
     ],
     ids=["eq", "in", "range", "and"],
 )
+@_V1_ONLY
 def test_delta_read_partition_filters(tmp_path, partition_filters, dates):
     """Only the matching partitions' files are listed, and the rows are exact."""
     path = os.path.join(tmp_path, "partitioned")
@@ -290,6 +385,7 @@ def test_delta_read_partition_filters(tmp_path, partition_filters, dates):
     assert sorted(row["date"] for row in ds.take_all()) == sorted(dates * 2)
 
 
+@_V1_ONLY
 def test_delta_read_partition_filters_or_groups(tmp_path):
     """An OR of AND groups needs deltalake's ``file_pruning_predicate`` (1.6.6+)."""
     path = os.path.join(tmp_path, "partitioned")
@@ -316,6 +412,7 @@ def test_delta_read_partition_filters_or_groups(tmp_path):
     ],
     ids=["data-column", "empty", "short-tuple", "empty-group"],
 )
+@_V1_ONLY
 def test_delta_read_partition_filters_rejects_invalid(
     tmp_path, partition_filters, match
 ):
@@ -326,6 +423,7 @@ def test_delta_read_partition_filters_rejects_invalid(
         ray.data.read_delta(path, partition_filters=partition_filters)
 
 
+@_V1_ONLY
 def test_read_unity_catalog_partition_filters(tmp_path):
     """``partition_filters`` reaches ``read_delta`` through ``reader_kwargs``."""
     from ray.data.catalog import DatabricksUnityCatalog, ResolvedSource
@@ -348,7 +446,7 @@ def test_read_unity_catalog_partition_filters(tmp_path):
 
 
 def test_delta_read_takes_file_sizes_from_the_log(tmp_path):
-    """Listing makes no per-file ``get_file_info`` call; sizes come from the log.
+    """No reader asks the filesystem for a file's info; sizes come from the log.
 
     Partition values with special characters check that the log's paths, which
     are URL-encoded once more than the fragment paths, are decoded exactly once.
@@ -363,25 +461,27 @@ def test_delta_read_takes_file_sizes_from_the_log(tmp_path):
         pa.table({"p": ["a b", "x/y", "100%", "plain"], "x": [1, 2, 3, 4]}),
         partition_by=["p"],
     )
+    calls = tmp_path / "get_file_info_calls"
 
-    class _CountingLocalFileSystem(fsspec.implementations.local.LocalFileSystem):
-        info_calls = 0
+    class _RecordingHandler(pafs.FSSpecHandler):
+        # Listing and reads run in Ray tasks, so the calls go to a file.
+        def get_file_info(self, paths):
+            with open(calls, "a") as f:
+                f.writelines(f"{p}\n" for p in paths)
+            return super().get_file_info(paths)
 
-        def info(self, *args, **kwargs):
-            type(self).info_calls += 1
-            return super().info(*args, **kwargs)
-
-    counting = _CountingLocalFileSystem(skip_instance_cache=True)
+    local = fsspec.implementations.local.LocalFileSystem(skip_instance_cache=True)
     filesystem = pafs.SubTreeFileSystem(
-        path, pafs.PyFileSystem(pafs.FSSpecHandler(counting))
+        path, pafs.PyFileSystem(_RecordingHandler(local))
     )
 
-    ds = ray.data.read_delta(path, filesystem=filesystem)
+    rows = ray.data.read_delta(path, filesystem=filesystem).take_all()
 
-    assert _CountingLocalFileSystem.info_calls == 0
-    assert len(ds.input_files()) == 4
+    assert sorted(row["x"] for row in rows) == [1, 2, 3, 4]
+    assert not calls.exists(), calls.read_text()
 
 
+@_V1_ONLY
 def test_delta_file_sizes_match_the_files(tmp_path):
     from deltalake import DeltaTable, write_deltalake
 

@@ -727,6 +727,99 @@ TEST_F(MemoryMonitorUtilsTest, TestGetMemoryThresholdResourceIsolationAddsRootSw
             user_memory_high_bytes + root_swap_max);
 }
 
+TEST_F(MemoryMonitorUtilsTest,
+       TestGetMemoryThresholdOrNullResourceIsolationAddsRootSwapWhenCountingSwap) {
+  // The poll-time threshold must carry the same root swap budget as
+  // GetMemoryThreshold. User-slice usage includes swap.current when the flag is
+  // on, so a memory.high-only threshold would kill workers early.
+  SetCountSwapFlag(true);
+  int64_t root_swap_max = 2LL * 1024 * 1024 * 1024;  // 2 GiB
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(
+      /*total_bytes=*/16LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/5LL * 1024 * 1024 * 1024,
+      /*anon_memory_bytes=*/0,
+      /*shmem_memory_bytes=*/0,
+      /*inactive_file_bytes=*/0,
+      /*active_file_bytes=*/0);
+  MockCgroupv2Swap(cgroup_dir, root_swap_max, /*swap_current_bytes=*/0);
+
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace(cgroup_dir, FakeCgroup{cgroup_dir, {5}, {}, {"cpu", "memory"}, {}});
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+
+  int64_t user_memory_max_bytes = 10LL * 1024 * 1024 * 1024;
+  int64_t user_memory_high_bytes = 8LL * 1024 * 1024 * 1024;
+  StatusOr<std::unique_ptr<CgroupManager>> result =
+      CgroupManager::Create(cgroup_dir,
+                            "node_id_123",
+                            /*system_reserved_cpu_weight=*/100,
+                            /*system_memory_bytes_min=*/1LL * 1024 * 1024 * 1024,
+                            /*system_memory_bytes_low=*/1LL * 1024 * 1024 * 1024,
+                            user_memory_high_bytes,
+                            user_memory_max_bytes,
+                            std::move(driver));
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(result.value());
+
+  int64_t runtime_threshold = MemoryMonitorUtils::GetMemoryThresholdOrNull(
+      /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
+      /*usage_threshold=*/0.5,
+      /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
+      /*resource_isolation_enabled=*/true,
+      *cgroup_manager,
+      /*root_cgroup_path=*/cgroup_dir);
+  ASSERT_EQ(runtime_threshold, user_memory_high_bytes + root_swap_max);
+  // Both entry points share one implementation.
+  ASSERT_EQ(runtime_threshold,
+            MemoryMonitorUtils::GetMemoryThreshold(
+                /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
+                /*usage_threshold=*/0.5,
+                /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
+                /*resource_isolation_enabled=*/true,
+                *cgroup_manager,
+                /*root_cgroup_path=*/cgroup_dir));
+  SetCountSwapFlag(false);
+}
+
+TEST_F(MemoryMonitorUtilsTest,
+       TestTakeMonitoredSystemMemoryUsageSnapshotIncludesSwapWhenCountingSwap) {
+  // The non-isolation worker killer judges this snapshot, and the threshold
+  // monitor fires on it. With the flag on it must be RAM + swap; a RAM-only
+  // snapshot makes the policy pick no workers while the monitor keeps firing.
+  SetCountSwapFlag(true);
+  int64_t cgroup_total_bytes = 4LL * 1024 * 1024 * 1024;     // 4 GiB memory.max
+  int64_t cgroup_current_bytes = 3LL * 1024 * 1024 * 1024;   // 3 GiB working set
+  int64_t cgroup_swap_max_bytes = 2LL * 1024 * 1024 * 1024;  // 2 GiB swap.max
+  int64_t cgroup_swap_current_bytes = 1LL * 1024 * 1024 * 1024;
+  int64_t mem_total_kb = 16 * 1024 * 1024;  // 16 GiB host RAM (not binding)
+  int64_t mem_available_kb = 8 * 1024 * 1024;
+  int64_t swap_total_kb = 8 * 1024 * 1024;
+  int64_t swap_free_kb = 8 * 1024 * 1024;
+
+  std::string cgroup_dir = MockCgroupv2MemoryUsage(cgroup_total_bytes,
+                                                   cgroup_current_bytes,
+                                                   /*anon_memory_bytes=*/0,
+                                                   /*shmem_memory_bytes=*/0,
+                                                   /*inactive_file_bytes=*/0,
+                                                   /*active_file_bytes=*/0);
+  MockCgroupv2Swap(cgroup_dir, cgroup_swap_max_bytes, cgroup_swap_current_bytes);
+  std::string proc_dir =
+      MockProcMeminfo(mem_total_kb, mem_available_kb, swap_total_kb, swap_free_kb);
+
+  MemoryUsageSnapshot monitored =
+      MemoryMonitorUtils::TakeMonitoredSystemMemoryUsageSnapshot(cgroup_dir, proc_dir);
+  ASSERT_EQ(monitored.total_bytes, cgroup_total_bytes + cgroup_swap_max_bytes);
+  ASSERT_EQ(monitored.used_bytes, cgroup_current_bytes + cgroup_swap_current_bytes);
+
+  // RAM-only view for contrast: this is what the worker killer judged before
+  // the fix.
+  MemoryUsageSnapshot ram_only = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+      cgroup_dir, /*include_swap=*/false, proc_dir);
+  ASSERT_EQ(ram_only.total_bytes, cgroup_total_bytes);
+  ASSERT_EQ(ram_only.used_bytes, cgroup_current_bytes);
+  SetCountSwapFlag(false);
+}
+
 TEST_F(MemoryMonitorUtilsTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {
   std::string proc_dir = UniqueID::FromRandom().Hex();
   boost::filesystem::create_directory(proc_dir);

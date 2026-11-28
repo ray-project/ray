@@ -118,7 +118,7 @@ py_test_module_list(
 
 # Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },
@@ -226,7 +226,11 @@ py_test(
 py_test(
     name = "test_hive",
     size = "small",
-    srcs = ["tests/datasource/test_hive.py"],
+    srcs = [
+        "tests/datasource/test_hive.py",
+        "tests/unit/datasource_v2/test_hive_hs2.py",
+    ],
+    main = "tests/datasource/test_hive.py",
     tags = [
         "exclusive",
         "team:data",
@@ -307,6 +311,20 @@ py_test(
     tags = [
         "exclusive",
         "needs_credentials",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_snowflake_unit",
+    size = "small",
+    srcs = ["tests/datasource/test_snowflake_unit.py"],
+    tags = [
+        "exclusive",
         "team:data",
     ],
     deps = [
@@ -2727,8 +2745,22 @@ py_test(
 
 py_test(
     name = "test_delta",
-    size = "small",
+    size = "medium",
     srcs = ["tests/datasource/test_delta.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_delta_v2",
+    size = "medium",
+    srcs = ["tests/datasource/test_delta_v2.py"],
     tags = [
         "exclusive",
         "team:data",

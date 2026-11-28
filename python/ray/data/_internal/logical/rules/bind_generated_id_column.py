@@ -55,6 +55,9 @@ class BindGeneratedIdColumn(Rule):
 
 def _bind_read(op: ReadFiles, name: str) -> ReadFiles:
     # Lazy imports: ``ray.data.checkpoint`` imports ``ray.data.context``.
+    from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
+        DeltaScanner,
+    )
     from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
         ParquetScanner,
     )
@@ -62,6 +65,12 @@ def _bind_read(op: ReadFiles, name: str) -> ReadFiles:
     from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
 
     scanner = op.scanner
+    if isinstance(scanner, DeltaScanner):
+        # A Delta table's data files are Parquet, but resuming must also read
+        # the same table version; not supported yet.
+        raise InvalidCheckpointingConfig(
+            "`generated_id_column` doesn't support `read_delta` yet."
+        )
     # Other formats can't produce the IDs; the planner rejects them.
     if not isinstance(scanner, ParquetScanner) or scanner.columns == ():
         return op

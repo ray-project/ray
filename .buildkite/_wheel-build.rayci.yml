@@ -4,6 +4,7 @@ steps:
   - name: ray-core-build
     label: "wanda: core binary parts py{{array.python}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
     depends_on: bazel-glibc217-x86_64
     array:
       python:
@@ -12,6 +13,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -33,6 +35,7 @@ steps:
   - name: ray-java-build
     label: "wanda: java build (x86_64)"
     wanda: ci/docker/ray-java.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
     depends_on: bazel-glibc217-x86_64
     env_file: rayci.env
     env:
@@ -52,6 +55,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"

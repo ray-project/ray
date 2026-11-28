@@ -150,20 +150,17 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
 
 def test_merge_file_schemas_transforms_before_merging():
     metadata = {b"source": b"first"}
-    id_field = pa.field("id", pa.int64(), metadata=metadata)
-    schemas = [
-        pa.schema([id_field, pa.field("source_file", pa.int64())], metadata=metadata),
-        pa.schema([id_field, pa.field("source_file", pa.string())], metadata=metadata),
-    ]
-
-    def remove_path(schema):
-        return schema.remove(schema.get_field_index("source_file"))
-
-    actual = inference._merge_file_schemas(
-        ["first", "second"], schemas, "Parquet", transform_schema=remove_path
+    expected = pa.schema(
+        [pa.field("id", pa.int64(), metadata=metadata)], metadata=metadata
     )
-
-    assert actual.equals(pa.schema([id_field], metadata=metadata), check_metadata=True)
+    schemas = [
+        expected.append(pa.field("source_file", typ))
+        for typ in (pa.int64(), pa.string())
+    ]
+    actual = inference._merge_file_schemas(
+        ["first", "second"], schemas, "Parquet", transform_schema=lambda s: s.remove(1)
+    )
+    assert actual.equals(expected, check_metadata=True)
 
 
 def _configure_small_schema_plan(monkeypatch, *, threshold=0, io_concurrency=4):
