@@ -14,7 +14,7 @@ from ray.air.execution.resources import (
     ResourceManager,
     ResourceRequest,
 )
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import OutOfMemoryError, RayActorError, RayTaskError
 
 logger = logging.getLogger(__name__)
 
@@ -265,10 +265,13 @@ class RayActorManager:
         - On actor error, trigger actor error callback AND error task error callback
         - On task error, trigger actor task error callback
         - On success, trigger actor task result callback
+
+        An out-of-memory kill is an actor error: the memory monitor killed the
+        actor's worker process.
         """
         tracked_actor = tracked_actor_task._tracked_actor
 
-        if isinstance(exception, RayActorError):
+        if isinstance(exception, (RayActorError, OutOfMemoryError)):
             self._failed_actor_ids.add(tracked_actor.actor_id)
 
             # Clean up any references to the actor and its futures
