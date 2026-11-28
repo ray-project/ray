@@ -411,6 +411,25 @@ class TestDeploymentConfig:
         assert schema.request_router_config.backoff_multiplier == 3.0
         assert schema.request_router_config.max_backoff_s == 2.0
 
+    @pytest.mark.parametrize("request_routing_timeout_s", [None, 1.5])
+    def test_request_routing_timeout_proto_round_trip(self, request_routing_timeout_s):
+        """None must not become 0.0 on the way through the proto."""
+        config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                request_routing_timeout_s=request_routing_timeout_s
+            )
+        )
+        round_tripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert (
+            round_tripped.request_router_config.request_routing_timeout_s
+            == request_routing_timeout_s
+        )
+
+    def test_request_routing_timeout_changes_equality(self):
+        """A timeout-only change must be broadcast to routers."""
+        config = RequestRouterConfig(request_routing_timeout_s=1.5)
+        assert config != RequestRouterConfig()
+
     def test_deployment_actors_config(self):
         """Test deployment_actors config and proto roundtrip."""
 

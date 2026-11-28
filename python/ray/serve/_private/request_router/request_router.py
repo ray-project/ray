@@ -596,6 +596,8 @@ class RequestRouter(ABC):
         # should be trying to get replicas for.
         self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
         self._pending_requests_to_route: Deque[PendingRequest] = deque()
+        # Requests that timed out since the pending queues were last compacted.
+        self._num_timed_out_since_compaction = 0
 
         # Dict indices for O(1) lookups of pending requests.
         # Maps internal_request_id -> PendingRequest for fast lookup by request ID.
@@ -926,6 +928,44 @@ class RequestRouter(ABC):
             candidates.popleft()
         self._pending_requests_by_model_id.pop(model_id, None)
         return None
+
+    @staticmethod
+    def _drop_done_prefix(queue: Deque[PendingRequest]):
+        """Pop done (completed or cancelled) requests off the front of a queue."""
+        while len(queue) > 0 and queue[0].future.done():
+            queue.popleft()
+
+    def _drop_done_pending_requests(self):
+        """Pop done requests off the front of the fulfillment queue."""
+        self._drop_done_prefix(self._pending_requests_to_fulfill)
+
+    def _drop_timed_out_request(self, pending_request: PendingRequest):
+        """Drop a request that timed out from both pending queues.
+
+        No routing task runs while the deployment has no replicas, so the lazy
+        cleanup can't be relied on to reach the request. Popping the done prefix
+        is O(1) amortized. A timed-out request queued behind a pending one stays
+        until the queues are compacted, which happens once timeouts could fill
+        half of the fulfillment queue, so the cost of a timeout stays constant
+        instead of growing with the queue length. Routing skips done entries.
+        """
+        # No-op if the request's future is already done.
+        pending_request.future.cancel()
+        self._num_timed_out_since_compaction += 1
+        self._drop_done_pending_requests()
+        self._drop_done_prefix(self._pending_requests_to_route)
+
+        if self._num_timed_out_since_compaction * 2 >= len(
+            self._pending_requests_to_fulfill
+        ):
+            self._num_timed_out_since_compaction = 0
+            for queue in (
+                self._pending_requests_to_fulfill,
+                self._pending_requests_to_route,
+            ):
+                kept = [queued for queued in queue if not queued.future.done()]
+                queue.clear()
+                queue.extend(kept)
 
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
@@ -1363,6 +1403,34 @@ class RequestRouter(ABC):
                     self.num_routing_tasks_in_backoff
                 )
 
+    def _register_routing_task(self, pending_request: PendingRequest) -> asyncio.Task:
+        """Register the current routing task as the owner of `pending_request`, so
+        a request that's cancelled or times out cancels the task."""
+        routing_task = asyncio.current_task(loop=self._event_loop)
+        assert routing_task is not None
+        self._routing_task_by_pending_request_future[
+            pending_request.future
+        ] = routing_task
+        return routing_task
+
+    def _unregister_routing_task(
+        self, pending_request: PendingRequest, routing_task: asyncio.Task
+    ):
+        """Undo `_register_routing_task`, unless a newer task took ownership."""
+        if (
+            self._routing_task_by_pending_request_future.get(pending_request.future)
+            is routing_task
+        ):
+            self._routing_task_by_pending_request_future.pop(pending_request.future)
+
+    def _finish_routing_task(self):
+        """Retire the current routing task and start replacements if routing work
+        remains, e.g. requests that arrived while this task was finishing."""
+        self._routing_tasks.remove(asyncio.current_task(loop=self._event_loop))
+        self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
+        if self._pending_requests_to_route:
+            self._maybe_start_routing_tasks()
+
     async def _fulfill_pending_requests(self):
         """Repeatedly tries to fulfill a pending request with an available replica.
 
@@ -1381,11 +1449,7 @@ class RequestRouter(ABC):
                 if pending_request is None:
                     break
                 request_metadata = pending_request.metadata
-                routing_task = asyncio.current_task(loop=self._event_loop)
-                assert routing_task is not None
-                self._routing_task_by_pending_request_future[
-                    pending_request.future
-                ] = routing_task
+                routing_task = self._register_routing_task(pending_request)
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
@@ -1395,11 +1459,7 @@ class RequestRouter(ABC):
                         # Clear out pending requests at the front of the
                         # queue that have been cancelled, then reevaluate
                         # if we need to continue this routing task.
-                        while (
-                            len(self._pending_requests_to_fulfill) > 0
-                            and self._pending_requests_to_fulfill[0].future.done()
-                        ):
-                            self._pending_requests_to_fulfill.popleft()
+                        self._drop_done_pending_requests()
 
                         # Stop selecting for completed or cancelled requests. The
                         # outer loop decides whether this task should retire.
@@ -1446,34 +1506,15 @@ class RequestRouter(ABC):
                                     )
                             logger.warning(warning_log)
                 finally:
-                    if (
-                        self._routing_task_by_pending_request_future.get(
-                            pending_request.future
-                        )
-                        is routing_task
-                    ):
-                        self._routing_task_by_pending_request_future.pop(
-                            pending_request.future
-                        )
+                    self._unregister_routing_task(pending_request, routing_task)
                     await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
             logger.exception("Unexpected error in _fulfill_pending_requests.")
         finally:
             # Remove completed or cancelled entries from the fulfillment queue.
-            while (
-                self._pending_requests_to_fulfill
-                and self._pending_requests_to_fulfill[0].future.done()
-            ):
-                self._pending_requests_to_fulfill.popleft()
-            routing_task = asyncio.current_task(loop=self._event_loop)
-            assert routing_task is not None
-            self._routing_tasks.remove(routing_task)
-            self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
-            # Requests may have arrived while this task is finishing.
-            # Start replacement tasks if routing work remains.
-            if self._pending_requests_to_route:
-                self._maybe_start_routing_tasks()
+            self._drop_done_pending_requests()
+            self._finish_routing_task()
 
     def _maybe_start_routing_tasks(self):
         """Start routing tasks to fulfill pending requests if necessary.
