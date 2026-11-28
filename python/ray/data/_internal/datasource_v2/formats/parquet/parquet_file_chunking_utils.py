@@ -22,9 +22,17 @@ def _row_group_unit_id(path: str, row_group_id: int) -> str:
 
     The reader reports it for each row group it scans on its own, and the
     footer reader accepts the same id in ``excluded_read_unit_ids`` to leave
-    that row group out of a listing. Nothing parses it.
+    that row group out of a listing. Only :func:`_row_group_unit_file` parses
+    it, to find its file.
     """
     return f"{path}#rg{row_group_id}"
+
+
+def _row_group_unit_file(unit_id: str) -> Optional[str]:
+    """The file path of a :func:`_row_group_unit_id` id, or ``None`` if
+    ``unit_id`` isn't one (a whole file's read unit id is its path)."""
+    path, separator, row_group_id = unit_id.rpartition("#rg")
+    return path if separator and row_group_id.isdigit() else None
 
 
 def _with_io_retry(f: Callable[[], R], description: str) -> R:

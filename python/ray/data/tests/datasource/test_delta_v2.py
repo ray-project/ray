@@ -7,6 +7,7 @@ where the two could disagree.
 
 import datetime
 import os
+import posixpath
 import re
 import sys
 from decimal import Decimal
@@ -19,6 +20,11 @@ import pytest
 
 import ray
 from ray.data import DataContext
+from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
+    resolve_data_file_path,
+)
+from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.expressions import col
@@ -386,6 +392,99 @@ def test_row_groups_are_split_into_read_tasks(row_group_table, monkeypatch):
 
     assert ds.num_blocks() > 1
     assert sorted(row["x"] for row in ds.take_all()) == list(range(100))
+
+
+@pytest.fixture
+def checkpointed_table(tmp_path) -> str:
+    """Three commits of one file each, with two row groups of three rows; the
+    rows of commit ``f`` hold ``x = f * 100 + i``."""
+    path = str(tmp_path / "checkpointed")
+    for f in range(3):
+        deltalake.write_deltalake(
+            path,
+            pa.table({"x": [f * 100 + i for i in range(6)]}),
+            mode="append",
+            writer_properties=deltalake.WriterProperties(max_row_group_size=3),
+        )
+    return path
+
+
+def _checkpoint_config(tmp_path, **kwargs) -> CheckpointConfig:
+    return CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"),
+        generated_id_column="generated_id",
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("version", [None, 0])
+def test_generated_id_warns_unless_the_version_is_pinned(
+    checkpointed_table, tmp_path, caplog, propagate_logs, version
+):
+    """The warning names the version read, which a resumed job may need."""
+    DataContext.get_current().checkpoint_config = _checkpoint_config(tmp_path)
+
+    _read(checkpointed_table, version=version).write_parquet(str(tmp_path / "out"))
+
+    assert ("pass `version=2` to `read_delta`" in caplog.text) is (version is None)
+
+
+def test_generated_ids_name_each_rows_place_in_its_data_file(
+    checkpointed_table, tmp_path
+):
+    ctx = DataContext.get_current()
+    ctx.checkpoint_config = _checkpoint_config(tmp_path)
+    out = str(tmp_path / "out")
+
+    _read(checkpointed_table, version=2).write_parquet(out)
+
+    ctx.checkpoint_config = None
+    ids = pq.read_table(out)["generated_id"].to_pylist()
+    log_paths = {
+        resolve_data_file_path(p)
+        for p in pa.table(
+            deltalake.DeltaTable(checkpointed_table).get_add_actions(flatten=True)
+        )["path"].to_pylist()
+    }
+    # Paths are relative to the table, as everywhere in the reader.
+    assert {posixpath.join(i["path_prefix"], i["file_name"]) for i in ids} == log_paths
+    assert sorted((i["file_name"], i["fragment"], i["row_id"]) for i in ids) == sorted(
+        (name, row_group, row)
+        for name in {i["file_name"] for i in ids}
+        for row_group in range(2)
+        for row in range(3)
+    )
+
+
+def test_generated_id_resume_of_the_latest_version(checkpointed_table, tmp_path):
+    """Without ``version=``, a resumed job reads the latest version. Appended
+    files are new work; files a compaction rewrote would be written again, so
+    the resumed job fails until it pins the version it read before."""
+    ctx = DataContext.get_current()
+    ctx.checkpoint_config = _checkpoint_config(
+        tmp_path, delete_checkpoint_on_success=False
+    )
+    out = str(tmp_path / "out")
+
+    def written_rows() -> int:
+        config, ctx.checkpoint_config = ctx.checkpoint_config, None
+        try:
+            return pq.read_table(out).num_rows
+        finally:
+            ctx.checkpoint_config = config
+
+    _read(checkpointed_table).write_parquet(out)
+    deltalake.write_deltalake(
+        checkpointed_table, pa.table({"x": [300, 301]}), mode="append"
+    )
+    _read(checkpointed_table).write_parquet(out)
+    assert written_rows() == 20
+
+    deltalake.DeltaTable(checkpointed_table).optimize.compact()
+    with pytest.raises(InvalidCheckpointingConfig, match="rewrote them"):
+        _read(checkpointed_table).write_parquet(out)
+    _read(checkpointed_table, version=3).write_parquet(out)
+    assert written_rows() == 20
 
 
 @pytest.mark.parametrize("deltalake_version", ["1.5.0", "1.6.6"])

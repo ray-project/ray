@@ -2,7 +2,7 @@ import csv
 import os
 import random
 from types import SimpleNamespace
-from typing import Any, Dict, List, Literal, Union
+from typing import Any, Callable, Dict, List, Literal, Union
 
 import numpy as np
 import pandas as pd
@@ -626,6 +626,26 @@ def _write_two_row_group_files(data_dir, num_files=3):
     return paths
 
 
+def _write_generated_id_input(
+    data_dir: str, data_format: str
+) -> Callable[[], ray.data.Dataset]:
+    """Write ``_write_two_row_group_files`` data as Parquet files or as three
+    Delta commits, and return a function that reads it."""
+    if data_format == "parquet":
+        _write_two_row_group_files(data_dir)
+        return lambda: ray.data.read_parquet(data_dir)
+    deltalake = pytest.importorskip("deltalake")
+    for file_index in range(3):
+        deltalake.write_deltalake(
+            data_dir,
+            pa.table({"x": [file_index * 100 + i for i in range(6)]}),
+            mode="append",
+            writer_properties=deltalake.WriterProperties(max_row_group_size=3),
+        )
+    DataContext.get_current()._use_delta_datasource_v2 = True
+    return lambda: ray.data.read_delta(data_dir, version=2)
+
+
 def _expected_output_row(
     path: str, file_index: int, row_group: int, row_id: int
 ) -> Dict[str, Any]:
@@ -695,7 +715,10 @@ def test_generated_id_resume_skips_committed_work(ray_start_10_cpus_shared, tmp_
     assert written.equals(pa.Table.from_pylist(expected_rows, schema=written.schema))
 
 
-def test_generated_id_recovery_no_missing_rows(ray_start_10_cpus_shared, tmp_path):
+@pytest.mark.parametrize("data_format", ["parquet", "delta"])
+def test_generated_id_recovery_no_missing_rows(
+    ray_start_10_cpus_shared, restore_data_context, tmp_path, data_format
+):
     """Fail a job partway, rerun it: every row is written (at least once) and
     the checkpoint is deleted after the successful rerun."""
     ctx = ray.data.DataContext.get_current()
@@ -705,8 +728,7 @@ def test_generated_id_recovery_no_missing_rows(ray_start_10_cpus_shared, tmp_pat
     ctx.checkpoint_config = CheckpointConfig(
         checkpoint_path=ckpt_path, generated_id_column="generated_id"
     )
-    data_dir = str(tmp_path / "in")
-    _write_two_row_group_files(data_dir)
+    read = _write_generated_id_input(str(tmp_path / "in"), data_format)
     out = str(tmp_path / "out")
 
     @ray.remote(num_cpus=0)
@@ -735,7 +757,7 @@ def test_generated_id_recovery_no_missing_rows(ray_start_10_cpus_shared, tmp_pat
             return batch
 
     def run():
-        ray.data.read_parquet(data_dir).map_batches(
+        read().map_batches(
             FailOnce,
             fn_constructor_args=[switch],
             concurrency=1,
@@ -754,14 +776,14 @@ def test_generated_id_recovery_no_missing_rows(ray_start_10_cpus_shared, tmp_pat
     assert written == {f * 100 + i for f in range(3) for i in range(6)}
 
 
+@pytest.mark.parametrize("data_format", ["parquet", "delta"])
 def test_generated_id_rerun_after_success_writes_nothing(
-    ray_start_10_cpus_shared, tmp_path
+    ray_start_10_cpus_shared, restore_data_context, tmp_path, data_format
 ):
     """With the checkpoint kept, a rerun after a full success lists no files
     and writes no rows."""
     ctx = ray.data.DataContext.get_current()
-    data_dir = str(tmp_path / "in")
-    _write_two_row_group_files(data_dir)
+    read = _write_generated_id_input(str(tmp_path / "in"), data_format)
     ctx.checkpoint_config = CheckpointConfig(
         checkpoint_path=str(tmp_path / "ckpt"),
         generated_id_column="generated_id",
@@ -769,8 +791,8 @@ def test_generated_id_rerun_after_success_writes_nothing(
     )
     out = str(tmp_path / "out")
 
-    ray.data.read_parquet(data_dir).write_parquet(out)
-    ray.data.read_parquet(data_dir).write_parquet(out)
+    read().write_parquet(out)
+    read().write_parquet(out)
 
     ctx.checkpoint_config = None
     assert pq.read_table(out).num_rows == 18
