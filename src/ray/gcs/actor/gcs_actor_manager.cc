@@ -1798,6 +1798,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       if (!actor->GetName().empty()) {
         named_actors_[actor->GetRayNamespace()][actor->GetName()] = actor->GetActorID();
       }
+      if (actor->IsDetached()) {
+        runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
+                                             actor_task_spec.runtime_env_info());
+      }
 
       if (actor_table_data.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
         const auto &owner = actor->GetOwnerAddress();

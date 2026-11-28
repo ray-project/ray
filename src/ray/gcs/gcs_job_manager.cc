@@ -39,6 +39,10 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
     // Recover [running_job_start_times_] from storage.
     if (!job_table_data.is_dead()) {
       running_job_start_times_.insert({job_id, job_table_data.start_time()});
+      if (job_table_data.config().has_runtime_env_info()) {
+        runtime_env_manager_.AddURIReference(job_id.Hex(),
+                                             job_table_data.config().runtime_env_info());
+      }
     }
   }
 }
