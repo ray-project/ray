@@ -245,6 +245,7 @@ Enable TLS by setting the following environment variables:
 - `RAY_TLS_SERVER_CERT`: Location of a certificate file, `tls.crt`, which Ray presents to other endpoints to achieve mutual authentication.
 - `RAY_TLS_SERVER_KEY`: Location of a private key file, `tls.key`, which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate.
 - `RAY_TLS_CA_CERT`: Location of a CA certificate file, `ca.crt`, which TLS uses to decide whether the correct authority signed the endpoint's certificate.
+- `RAY_TLS_REQUIRE_CLIENT_AUTH` (optional): Set to 0 to keep TLS on Ray's Python gRPC servers (for example the Ray Client server) but not require clients to present a certificate. Default: 1, which requires client certificates (mutual TLS). Disabling this weakens authentication; only do so if another layer authenticates clients.
 
 ### Step 4: Verify TLS authentication
 
