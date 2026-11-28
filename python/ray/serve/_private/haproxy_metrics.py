@@ -125,6 +125,9 @@ class HAProxyMetricsCollector:
     ) -> None:
         self._transport: Optional[asyncio.DatagramTransport] = None
         self._socket_path: Optional[str] = None
+        # Incremented by every close(), so a bind that was suspended while
+        # close() ran can tell and drop its transport.
+        self._close_count = 0
 
         # Source for the node-level poll loop (process count + target mismatch).
         self._haproxy_api = haproxy_api
@@ -492,6 +495,7 @@ class HAProxyMetricsCollector:
         """
         if self._transport is not None:
             self.close()
+        close_count = self._close_count
 
         if loop is None:
             loop = asyncio.get_event_loop()
@@ -504,6 +508,9 @@ class HAProxyMetricsCollector:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         try:
             sock.bind(socket_path)
+            # Record the path before the await below, so that a close() while
+            # the bind is suspended also removes the socket file.
+            self._socket_path = socket_path
             # Match the existing admin socket pattern (mode 666) so HAProxy
             # processes running as a different user can still send to it.
             os.chmod(socket_path, 0o666)
@@ -512,9 +519,23 @@ class HAProxyMetricsCollector:
             )
         except Exception:
             sock.close()
+            if self._close_count == close_count:
+                # Don't leave the socket file we bound behind.
+                if self._socket_path is not None:
+                    try:
+                        os.unlink(self._socket_path)
+                    except FileNotFoundError:
+                        pass
+                self._socket_path = None
             raise
 
-        self._socket_path = socket_path
+        if self._close_count != close_count:
+            # close() ran while the bind was suspended (e.g. the proxy shut
+            # down during startup) and already removed the socket file. Don't
+            # bring a reader back on a closed collector.
+            transport.close()
+            return
+
         self._transport = transport
 
     def close(self) -> None:
@@ -523,8 +544,10 @@ class HAProxyMetricsCollector:
 
         Safe to call multiple times; safe to call without ever having
         bound or started polling. The metric objects survive close — they
-        are owned by Ray's metric registry, not this instance.
+        are owned by Ray's metric registry, not this instance. A bind that is
+        still in progress does not attach its reader afterwards.
         """
+        self._close_count += 1
         if self._node_metrics_task is not None:
             self._node_metrics_task.cancel()
             self._node_metrics_task = None
