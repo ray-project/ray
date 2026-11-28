@@ -1023,28 +1023,18 @@ class TestReplicaConfig:
             is None
         )
 
-    def test_topology_spread_needs_a_strict_pack_placement_group(self):
+    def test_topology_spread_with_any_placement_group(self):
         class Class:
             pass
 
         rules = [{"label_key": "ray.io/node-id", "min_domains": 2}]
-        ReplicaConfig.create(
-            Class,
-            placement_group_bundles=[{"CPU": 1}],
-            placement_group_strategy="STRICT_PACK",
-            topology_spread=rules,
-        )
-        ReplicaConfig.create(
-            Class, placement_group_bundles=[{"CPU": 1}], topology_spread=[]
-        )
-        for strategy in (None, "PACK", "SPREAD", "STRICT_SPREAD"):
-            with pytest.raises(ValueError, match="STRICT_PACK"):
-                ReplicaConfig.create(
-                    Class,
-                    placement_group_bundles=[{"CPU": 1}],
-                    placement_group_strategy=strategy,
-                    topology_spread=rules,
-                )
+        for strategy in ("STRICT_PACK", "PACK", "SPREAD", "STRICT_SPREAD"):
+            ReplicaConfig.create(
+                Class,
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_strategy=strategy,
+                topology_spread=rules,
+            )
 
     def test_required_topology_spread_validation(self):
         class Class:
