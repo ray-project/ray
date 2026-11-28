@@ -1020,6 +1020,9 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
 )
 
 RUNNING_REQUESTS_KEY = "running_requests"
+# Running requests a direct-ingress replica received without a handle. Handles
+# report the requests they route, so the two sources never share a request.
+DIRECT_INGRESS_RUNNING_REQUESTS_KEY = "direct_ingress_running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
 QUEUED_REQUESTS_KEY = "queued_requests"
 
