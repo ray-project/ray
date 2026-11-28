@@ -324,8 +324,30 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/capacity_queue_request_router_app.py",
+        # Runs in its own target below, which also needs the YAML examples.
+        "source/serve/doc_code/tracing/quickstart.py",
+        # Imported by the tracing examples; not a test by itself.
+        "source/serve/doc_code/tracing/tracing_app.py",
     ],
     extra_srcs = [],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+)
+
+py_test(
+    name = "source/serve/doc_code/tracing/quickstart",
+    size = "medium",
+    srcs = ["source/serve/doc_code/tracing/quickstart.py"],
+    data = [
+        "source/serve/doc_code/tracing/exporters.py",
+        "source/serve/doc_code/tracing/honeycomb_config.yaml",
+        "source/serve/doc_code/tracing/otlp_config.yaml",
+        "source/serve/doc_code/tracing/tracing_app.py",
+        "source/serve/doc_code/tracing/tracing_config.yaml",
+    ],
+    main = "source/serve/doc_code/tracing/quickstart.py",
     tags = [
         "exclusive",
         "team:serve",

@@ -14,6 +14,10 @@ To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to
 Tracing is an Alpha feature and no longer under active development/being maintained. APIs are subject to change.
 :::
 
+:::{note}
+To trace Ray Serve requests across proxies and deployments, see {ref}`Trace requests with OpenTelemetry <serve-tracing>`. Ray Serve configures request tracing separately, with `TracingConfig`, not with the tracing startup hook on this page.
+:::
+
 ## Installation
 First, install OpenTelemetry:
 
