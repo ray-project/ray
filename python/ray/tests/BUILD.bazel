@@ -808,6 +808,7 @@ py_test_module_list(
     files = [
         "test_autoscaler.py",
         "test_autoscaler_auth_token.py",
+        "test_launch_and_verify_cluster.py",
         "test_symmetric_run.py",
     ],
     tags = [

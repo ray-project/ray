@@ -10,9 +10,11 @@ Usage:
         <cluster_configuration_file_path>
 """
 import argparse
+import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,6 +29,15 @@ from google.cloud import storage
 
 import ray
 from ray.autoscaler._private.aws.config import RAY
+from ray.autoscaler._private.util import fillout_defaults
+
+# How the provider's default setup command that installs Ray starts.
+RAY_INSTALL_COMMAND_PREFIX = "which ray ||"
+# Where this job's Ray wheel goes on each node, relative to the home directory.
+REMOTE_WHEEL_DIR = "release_test_ray_wheel"
+# Where a node gets a virtualenv of this job's Python version when its own
+# Python is another version, relative to the home directory.
+REMOTE_VENV_DIR = "release_test_venv"
 
 
 def check_arguments():
@@ -54,24 +65,36 @@ def check_arguments():
     )
     parser.add_argument(
         "--docker-override",
-        choices=["disable", "latest", "nightly", "commit"],
+        choices=["disable", "latest", "latest-gpu", "nightly", "commit"],
         default="disable",
-        help="Override the docker image used for the head node and worker nodes",
+        help=(
+            "Override the docker image used for the head node and worker nodes. "
+            "`latest` and `latest-gpu` use the last Ray release's CPU or GPU "
+            "image of this job's Python version, and need --wheel-override to "
+            "install the Ray under test on it."
+        ),
     )
     parser.add_argument(
         "--wheel-override",
         type=str,
         default="",
-        help="Override the wheel used for the head node and worker nodes",
+        help=(
+            "Override the wheel used for the head node and worker nodes: a URL, "
+            "or `commit` for the Ray wheel this release test runs."
+        ),
     )
     parser.add_argument(
         "cluster_config", type=str, help="Path to the cluster configuration file"
     )
     args = parser.parse_args()
 
-    assert not (
-        args.docker_override != "disable" and args.wheel_override != ""
-    ), "Cannot override both docker and wheel"
+    # The latest image holds the last Ray release, not the Ray under test that
+    # runs `ray up`, and a node with another Ray version rejects its token.
+    if args.docker_override.startswith("latest") and not args.wheel_override:
+        parser.error(
+            f"--docker-override {args.docker_override} needs --wheel-override, "
+            "to install the Ray under test on the image."
+        )
 
     return (
         args.cluster_config,
@@ -81,6 +104,13 @@ def check_arguments():
         args.docker_override,
         args.wheel_override,
     )
+
+
+def python_image_tag() -> str:
+    """Return the Python part of a `rayproject/ray` image tag, like `py310`,
+    for the Python that runs this job, which the Ray wheel under test is
+    built for."""
+    return f"py{sys.version_info.major}{sys.version_info.minor}"
 
 
 def get_docker_image(docker_override: str):
@@ -94,7 +124,9 @@ def get_docker_image(docker_override: str):
         applicable.
     """
     if docker_override == "latest":
-        return "rayproject/ray:latest-py310"
+        return f"rayproject/ray:latest-{python_image_tag()}"
+    elif docker_override == "latest-gpu":
+        return f"rayproject/ray:latest-{python_image_tag()}-gpu"
     elif docker_override == "nightly":
         return "rayproject/ray:nightly-py310"
     elif docker_override == "commit":
@@ -129,6 +161,91 @@ def override_wheels_url(config_yaml, wheel_url):
         f'pip3 uninstall -y ray && pip3 install -U "ray[default] @ {wheel_url}"'
     )
     config_yaml["setup_commands"] = setup_commands
+
+
+def find_local_ray_wheel() -> str:
+    """Return the path of the wheel this job's Ray was installed from.
+
+    The release test images keep the wheel they install in the home directory.
+
+    Returns:
+        The path of the wheel.
+
+    Raises:
+        SystemExit: No wheel of this job's Ray and Python version is there.
+    """
+    cp = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    pattern = os.path.expanduser(f"~/ray-{ray.__version__}-{cp}-*.whl")
+    wheels = glob.glob(pattern)
+    if len(wheels) != 1:
+        print(f"Error: expected one Ray wheel matching {pattern}, found {wheels}")
+        sys.exit(1)
+    return wheels[0]
+
+
+def use_job_python_command() -> str:
+    """Return a setup command that puts a Python of this job's version, which
+    the Ray wheel under test is built for, first on the node's PATH.
+
+    It does nothing if the node's Python is that version already, as in an
+    image picked by `get_docker_image`. Otherwise, like when a release test
+    moves to a newer Python than a VM image ships, it creates a virtualenv
+    of that version with uv, which downloads the Python, and puts it first on
+    PATH in ~/.bashrc, as the providers' default setup commands do for their
+    Python. The later setup and start commands run in new login shells, so
+    they use it.
+    """
+    major, minor = sys.version_info[:2]
+    venv = f"$HOME/{REMOTE_VENV_DIR}"
+    return (
+        f"python -c 'import sys; sys.exit(sys.version_info[:2] != ({major}, {minor}))'"
+        f" || {{ pip install -U uv && "
+        f"python -m uv venv --seed --python {major}.{minor} {venv} && "
+        f"echo 'export PATH=\"{venv}/bin:$PATH\"' >> ~/.bashrc; }}"
+    )
+
+
+def override_wheel_with_local(
+    config_yaml: dict, wheel_path: str, files_dir: str
+) -> None:
+    """Install the given local Ray wheel on every node.
+
+    The provider's default setup commands install Ray from PyPI or the
+    nightly wheel when a node has no Ray, so this fills in the defaults and
+    replaces that step with installing the given wheel, in a Python of this
+    job's version.
+
+    Args:
+        config_yaml: The cluster config, changed in place.
+        wheel_path: The local path of the wheel.
+        files_dir: A local directory that lives until the cluster is down. The
+            wheel is copied to a directory in it, which is mounted on the
+            nodes: Docker doesn't always update a bind mounted file, so
+            `ray up` warns about mounting a file.
+    """
+    wheel_name = os.path.basename(wheel_path)
+    local_wheel_dir = os.path.join(files_dir, REMOTE_WHEEL_DIR)
+    os.makedirs(local_wheel_dir, exist_ok=True)
+    shutil.copy(wheel_path, local_wheel_dir)
+    filled_config = fillout_defaults(config_yaml)
+    # Drops the default Ray install, which costs time, and which on a release
+    # branch can ask PyPI for a version that isn't published yet.
+    setup_commands = [
+        cmd
+        for cmd in filled_config.get("setup_commands", [])
+        if not cmd.startswith(RAY_INSTALL_COMMAND_PREFIX)
+    ]
+    # Plain `pip`, as in the defaults, whose PATH setup picks the Python.
+    setup_commands.append(use_job_python_command())
+    setup_commands.append(
+        f"pip uninstall -y ray; "
+        f'pip install -U "$HOME/{REMOTE_WHEEL_DIR}/{wheel_name}[default]"'
+    )
+    config_yaml["setup_commands"] = setup_commands
+    # An empty `file_mounts:` key in the YAML holds None.
+    file_mounts = config_yaml.get("file_mounts") or {}
+    file_mounts[f"~/{REMOTE_WHEEL_DIR}"] = local_wheel_dir
+    config_yaml["file_mounts"] = file_mounts
 
 
 def override_docker_image(config_yaml, docker_image):
@@ -473,16 +590,23 @@ if __name__ == "__main__":
     )
 
     print("======================================")
-    print(f"Overriding ray wheel...: {wheel_override}")
-    if wheel_override:
-        override_wheels_url(config_yaml, wheel_override)
-
-    print("======================================")
     print(f"Overriding docker image...: {docker_override}")
     docker_override_image = get_docker_image(docker_override)
     print(f"Using docker image: {docker_override_image}")
     if docker_override_image:
         override_docker_image(config_yaml, docker_override_image)
+
+    # After the image, as the wheel's setup commands run in its container.
+    print("======================================")
+    print(f"Overriding ray wheel...: {wheel_override}")
+    if wheel_override == "commit":
+        wheel_path = find_local_ray_wheel()
+        print(f"Using this job's Ray wheel: {wheel_path}")
+        # Holds the wheel that is mounted on the nodes. It's in the job's
+        # temporary directory, so it's left for the job to clean up.
+        override_wheel_with_local(config_yaml, wheel_path, tempfile.mkdtemp())
+    elif wheel_override:
+        override_wheels_url(config_yaml, wheel_override)
 
     provider_type = config_yaml.get("provider", {}).get("type")
     config_yaml["provider"]["cache_stopped_nodes"] = False

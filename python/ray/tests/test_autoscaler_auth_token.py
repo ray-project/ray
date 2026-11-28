@@ -470,7 +470,7 @@ def script_running_container_without_token_mount(runner: MockProcessRunner):
     runner.respond_to_call(".State.Running", ["true"] * 10)
 
 
-def test_docker_mode_mounts_token_and_restarts_container(clean_auth_env, monkeypatch):
+def test_docker_mode_copies_token_into_running_container(clean_auth_env, monkeypatch):
     monkeypatch.setenv("RAY_AUTH_TOKEN", "env-token")
 
     result = ray_up(
@@ -484,12 +484,17 @@ def test_docker_mode_mounts_token_and_restarts_container(clean_auth_env, monkeyp
         re.search(r"rsync .*/tmp/ray_tmp_mount/default/~/\.ray/auth_token$", c)
         for c in commands_run
     )
-    result.runner.assert_has_call("1.2.3.4", pattern="docker stop")
-    result.runner.assert_has_call(
-        "1.2.3.4",
-        pattern=r"docker run.*-v /tmp/ray_tmp_mount/default/~/\.ray/auth_token:"
-        r"/root/\.ray/auth_token",
-    )
+    # A copy made in the container belongs to the container user, so the
+    # container needs no token mount and no restart.
+    assert any(
+        re.search(
+            r"mkdir -p \S*/\.ray'.* && rsync -e \S*docker exec -i\S* -avz "
+            r"\S*/\.ray/auth_token mock:\S*/\.ray/auth_token",
+            c,
+        )
+        for c in commands_run
+    ), commands_run
+    assert not any("docker stop" in c for c in commands_run)
 
 
 def test_fake_docker_runner_skips_only_token_upload(clean_auth_env, monkeypatch):
