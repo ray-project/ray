@@ -1,9 +1,11 @@
 """Test the collective allreduice API."""
+
 import numpy as np
 import pytest
 import torch
 
 import ray
+from ray.util.collective import types
 from ray.util.collective.tests.cpu_util import create_collective_workers
 from ray.util.collective.types import Backend, ReduceOp
 
@@ -156,6 +158,25 @@ def test_allreduce_torch_numpy(ray_start_single_node, backend):
     )
     ray.wait([actors[1].set_buffer.remote(np.ones(10, dtype=np.float32))])
     ray.get([a.do_allreduce.remote() for a in actors])
+
+
+@pytest.mark.parametrize("backend", [Backend.GLOO])
+def test_allreduce_options_not_mutated(ray_start_single_node, backend):
+    world_size = 2
+    actors, _ = create_collective_workers(world_size, backend=backend)
+    assert types.AllReduceOptions.reduceOp == ReduceOp.SUM
+    ray.wait(
+        [
+            a.set_buffer.remote(np.ones(10, dtype=np.float32) * (i + 2))
+            for i, a in enumerate(actors)
+        ]
+    )
+    results = ray.get([a.do_allreduce.remote(op=ReduceOp.MAX) for a in actors])
+    assert (results[0] == np.ones((10,), dtype=np.float32) * 3).all()
+    assert (results[1] == np.ones((10,), dtype=np.float32) * 3).all()
+    # Ensure class attribute is not mutated
+    assert types.AllReduceOptions.reduceOp == ReduceOp.SUM
+    assert types.AllReduceOptions().reduceOp == ReduceOp.SUM
 
 
 if __name__ == "__main__":

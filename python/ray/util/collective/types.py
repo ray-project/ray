@@ -64,26 +64,26 @@ unset_timeout_ms = timedelta(milliseconds=-1)
 
 @dataclass
 class AllReduceOptions:
-    reduceOp = ReduceOp.SUM
-    timeout_ms = unset_timeout_ms
+    reduceOp: ReduceOp = ReduceOp.SUM
+    timeout_ms: timedelta = unset_timeout_ms
 
 
 @dataclass
 class BarrierOptions:
-    timeout_ms = unset_timeout_ms
+    timeout_ms: timedelta = unset_timeout_ms
 
 
 @dataclass
 class ReduceOptions:
-    reduceOp = ReduceOp.SUM
-    root_rank = 0
-    root_tensor = 0  # index for multi-gpu reduce operations
-    timeout_ms = unset_timeout_ms
+    reduceOp: ReduceOp = ReduceOp.SUM
+    root_rank: int = 0
+    root_tensor: int = 0  # index for multi-gpu reduce operations
+    timeout_ms: timedelta = unset_timeout_ms
 
 
 @dataclass
 class AllGatherOptions:
-    timeout_ms = unset_timeout_ms
+    timeout_ms: timedelta = unset_timeout_ms
 
 
 #
@@ -95,28 +95,28 @@ class AllGatherOptions:
 
 @dataclass
 class BroadcastOptions:
-    root_rank = 0
-    root_tensor = 0
-    timeout_ms = unset_timeout_ms
+    root_rank: int = 0
+    root_tensor: int = 0
+    timeout_ms: timedelta = unset_timeout_ms
 
 
 @dataclass
 class ReduceScatterOptions:
-    reduceOp = ReduceOp.SUM
-    timeout_ms = unset_timeout_ms
+    reduceOp: ReduceOp = ReduceOp.SUM
+    timeout_ms: timedelta = unset_timeout_ms
 
 
 @dataclass
 class SendOptions:
-    dst_rank = 0
-    dst_gpu_index = 0
-    n_elements = 0
-    timeout_ms = unset_timeout_ms
+    dst_rank: int = 0
+    dst_gpu_index: int = 0
+    n_elements: int = 0
+    timeout_ms: timedelta = unset_timeout_ms
 
 
 @dataclass
 class RecvOptions:
-    src_rank = 0
-    src_gpu_index = 0
-    n_elements = 0
-    unset_timeout_ms = unset_timeout_ms
+    src_rank: int = 0
+    src_gpu_index: int = 0
+    n_elements: int = 0
+    timeout_ms: timedelta = unset_timeout_ms
