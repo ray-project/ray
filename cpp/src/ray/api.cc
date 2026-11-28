@@ -24,9 +24,14 @@ static bool is_init_ = false;
 
 void Init(ray::RayConfig &config, int argc, char **argv) {
   if (!IsInitialized()) {
-    internal::ConfigInternal::Instance().Init(config, argc, argv);
-    auto runtime = internal::AbstractRayRuntime::DoInit();
-    is_init_ = true;
+    try {
+      internal::ConfigInternal::Instance().Init(config, argc, argv);
+      auto runtime = internal::AbstractRayRuntime::DoInit();
+      is_init_ = true;
+    } catch (...) {
+      internal::ConfigInternal::Instance().Reset();
+      throw;
+    }
   }
 }
 

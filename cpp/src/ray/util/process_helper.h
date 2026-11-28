@@ -29,7 +29,7 @@ class ProcessHelper {
  public:
   void RayStart(CoreWorkerOptions::TaskExecutionCallback callback);
   void RayStop();
-  void StartRayNode(const std::string node_id_address,
+  bool StartRayNode(const std::string node_id_address,
                     const int port,
                     const std::string redis_username,
                     const std::string redis_password,
@@ -49,6 +49,7 @@ class ProcessHelper {
 
  private:
   ProcessHelper(){};
+  bool started_ray_node_ = false;
 };
 
 }  // namespace internal

@@ -269,5 +269,29 @@ void ConfigInternal::UpdateSessionDir(const std::string dir) {
     logs_dir = session_dir + "/logs";
   }
 }
+
+void ConfigInternal::Reset() {
+  worker_type = WorkerType::DRIVER;
+  run_mode = RunMode::SINGLE_PROCESS;
+  bootstrap_ip.clear();
+  bootstrap_port = 6379;
+  redis_username = "default";
+  redis_password = "5241590000000000";
+  node_manager_port = 0;
+  code_search_path.clear();
+  plasma_store_socket_name.clear();
+  raylet_socket_name.clear();
+  session_dir.clear();
+  job_id.clear();
+  logs_dir.clear();
+  node_ip_address.clear();
+  worker_id.clear();
+  head_args.clear();
+  runtime_env.reset();
+  runtime_env_hash = 0;
+  default_actor_lifetime = rpc::JobConfig_ActorLifetime_NON_DETACHED;
+  job_config_metadata.clear();
+  ray_namespace.clear();
+}
 }  // namespace internal
 }  // namespace ray

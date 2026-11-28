@@ -14,8 +14,22 @@
 
 #include "process_helper.h"
 
+#include <ray/api/ray_exception.h>
+
+#ifndef _WIN32
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+
+extern char **environ;
+#endif
+
 #include <boost/algorithm/string.hpp>
 #include <string>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -30,7 +44,7 @@ namespace internal {
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
-void ProcessHelper::StartRayNode(const std::string node_id_address,
+bool ProcessHelper::StartRayNode(const std::string node_id_address,
                                  const int port,
                                  const std::string redis_username,
                                  const std::string redis_password,
@@ -50,10 +64,30 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
+#ifdef _WIN32
   auto [proc, ec] = Process::Spawn(cmdargs, true);
   RAY_CHECK(!ec) << "Failed to spawn process to start ray node: " << ec.message();
-  proc->Wait();
-  return;
+  return proc->Wait() == 0;
+#else
+  std::vector<char *> argv;
+  argv.reserve(cmdargs.size() + 1);
+  for (auto &arg : cmdargs) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+  pid_t pid = -1;
+  int spawn_rc = posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
+  RAY_CHECK(spawn_rc == 0) << "Failed to spawn process to start ray node: "
+                           << std::strerror(spawn_rc);
+  int status = 0;
+  pid_t wait_rc = -1;
+  do {
+    wait_rc = waitpid(pid, &status, 0);
+  } while (wait_rc == -1 && errno == EINTR);
+  RAY_CHECK(wait_rc == pid) << "Failed to wait for ray start process: "
+                            << std::strerror(errno);
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+#endif
 }
 
 void ProcessHelper::StopRayNode() {
@@ -74,7 +108,9 @@ std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateA
                                             /*fetch_cluster_id_if_nil=*/false);
   auto global_state_accessor =
       std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
-  RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
+  if (!global_state_accessor->Connect()) {
+    throw RayException("Failed to connect to GCS at " + BuildAddress(gcs_ip, gcs_port));
+  }
   return global_state_accessor;
 }
 
@@ -82,16 +118,29 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   std::string bootstrap_ip = ConfigInternal::Instance().bootstrap_ip;
   int bootstrap_port = ConfigInternal::Instance().bootstrap_port;
 
+  struct LocalNodeRollbackGuard {
+    ProcessHelper *helper;
+    bool active = false;
+    ~LocalNodeRollbackGuard() {
+      if (active && helper->started_ray_node_) {
+        helper->StopRayNode();
+        helper->started_ray_node_ = false;
+      }
+    }
+  } rollback_guard{this, false};
+
+  started_ray_node_ = false;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
     bootstrap_ip = ray::GetNodeIpAddressFromPerspective();
     const std::string token_error = rpc::CreateTokenIfMissingForOwnCluster();
     RAY_CHECK(token_error.empty()) << token_error;
-    StartRayNode(bootstrap_ip,
-                 bootstrap_port,
-                 ConfigInternal::Instance().redis_username,
-                 ConfigInternal::Instance().redis_password,
-                 ConfigInternal::Instance().head_args);
+    started_ray_node_ = StartRayNode(bootstrap_ip,
+                                     bootstrap_port,
+                                     ConfigInternal::Instance().redis_username,
+                                     ConfigInternal::Instance().redis_password,
+                                     ConfigInternal::Instance().head_args);
+    rollback_guard.active = started_ray_node_;
   }
 
   std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
@@ -110,22 +159,34 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     std::string node_to_connect;
     auto status =
         global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);
-    RAY_CHECK_OK(status)
-        << "Failed to get node to connect for driver when starting the cluster";
+    if (!status.ok()) {
+      throw RayException(
+          "Failed to get node to connect for driver when starting the cluster: " +
+          status.ToString());
+    }
     ray::rpc::GcsNodeInfo node_info;
-    node_info.ParseFromString(node_to_connect);
+    if (!node_info.ParseFromString(node_to_connect)) {
+      throw RayException(
+          "Failed to parse GcsNodeInfo received from GCS when starting the cluster.");
+    }
     ConfigInternal::Instance().raylet_socket_name = node_info.raylet_socket_name();
     ConfigInternal::Instance().plasma_store_socket_name =
         node_info.object_store_socket_name();
     ConfigInternal::Instance().node_manager_port = node_info.node_manager_port();
     ConfigInternal::Instance().UpdateSessionDir(node_info.session_dir());
   }
-  RAY_CHECK(!ConfigInternal::Instance().raylet_socket_name.empty())
-      << "Failed to start ray cluster, raylet socket name could not be resolved";
-  RAY_CHECK(!ConfigInternal::Instance().plasma_store_socket_name.empty())
-      << "Failed to start ray cluster, plasma store socket name could not be resolved";
-  RAY_CHECK(ConfigInternal::Instance().node_manager_port > 0)
-      << "Failed to start ray cluster, node manager port could not be resolved";
+  if (ConfigInternal::Instance().raylet_socket_name.empty()) {
+    throw RayException(
+        "Failed to start ray cluster, raylet socket name could not be resolved.");
+  }
+  if (ConfigInternal::Instance().plasma_store_socket_name.empty()) {
+    throw RayException(
+        "Failed to start ray cluster, plasma store socket name could not be resolved.");
+  }
+  if (ConfigInternal::Instance().node_manager_port <= 0) {
+    throw RayException(
+        "Failed to start ray cluster, node manager port could not be resolved.");
+  }
 
   gcs::GcsClientOptions gcs_options =
       gcs::GcsClientOptions(bootstrap_ip,
@@ -182,12 +243,14 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       << "Could not start ray cluster: failed to serialize job config";
   options.serialized_job_config = serialized_job_config;
   CoreWorkerProcess::Initialize(options);
+  rollback_guard.active = false;
 }
 
 void ProcessHelper::RayStop() {
   CoreWorkerProcess::Shutdown();
-  if (ConfigInternal::Instance().bootstrap_ip.empty()) {
+  if (started_ray_node_) {
     StopRayNode();
+    started_ray_node_ = false;
   }
 }
 

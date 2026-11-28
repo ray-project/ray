@@ -49,19 +49,29 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
   std::shared_ptr<AbstractRayRuntime> runtime;
   if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
     runtime = std::make_shared<LocalModeRayRuntime>();
+    RAY_CHECK(runtime);
+    internal::RayRuntimeHolder::Instance().Init(runtime);
+    abstract_ray_runtime_ = runtime;
   } else {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
-    runtime = std::make_shared<NativeRayRuntime>();
-    RAY_LOG(INFO) << "Native ray runtime started.";
+    try {
+      runtime = std::make_shared<NativeRayRuntime>();
+      RAY_LOG(INFO) << "Native ray runtime started.";
+      RAY_CHECK(runtime);
+      internal::RayRuntimeHolder::Instance().Init(runtime);
+      if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
+        // Load functions from code search path.
+        FunctionHelper::GetInstance().LoadFunctionsFromPaths(
+            ConfigInternal::Instance().code_search_path);
+      }
+      abstract_ray_runtime_ = runtime;
+    } catch (...) {
+      internal::RayRuntimeHolder::Instance().Init(nullptr);
+      abstract_ray_runtime_ = nullptr;
+      ProcessHelper::GetInstance().RayStop();
+      throw;
+    }
   }
-  RAY_CHECK(runtime);
-  internal::RayRuntimeHolder::Instance().Init(runtime);
-  if (ConfigInternal::Instance().worker_type == WorkerType::WORKER) {
-    // Load functions from code search path.
-    FunctionHelper::GetInstance().LoadFunctionsFromPaths(
-        ConfigInternal::Instance().code_search_path);
-  }
-  abstract_ray_runtime_ = runtime;
   return runtime;
 }
 
