@@ -394,6 +394,10 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   friend class LocalLeaseManagerTest;
   FRIEND_TEST(ClusterLeaseManagerTest, FeasibleToNonFeasible);
   FRIEND_TEST(LocalLeaseManagerTest, TestLeaseGrantingOrder);
+  FRIEND_TEST(LocalLeaseManagerTest, TestFairShareAcrossMultipleFeasibleClasses);
+  FRIEND_TEST(LocalLeaseManagerTest, TestManySchedulingClassesFairShareActive);
+  FRIEND_TEST(LocalLeaseManagerTest,
+              TestFairShareWithDefaultActorClassesRemovedFromQueue);
   friend size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager);
 };
 }  // namespace raylet
