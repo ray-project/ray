@@ -3624,6 +3624,9 @@ class DeploymentState:
                 self._deployed_info,
                 self._target_state.target_num_replicas,
             )
+        self._autoscaling_state_manager.configure_metrics_source(
+            self._id, self._deployed_info.deployment_config.autoscaling_metrics_config
+        )
         self._recover_deployment_actors()
 
     def recover_current_state_from_replica_actor_names(
@@ -4173,6 +4176,9 @@ class DeploymentState:
                 deployment_info.target_capacity,
             )
 
+        self._autoscaling_state_manager.configure_metrics_source(
+            self._id, deployment_info.deployment_config.autoscaling_metrics_config
+        )
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
         if not self._target_state.rolling_update_failed:
@@ -7605,7 +7611,10 @@ class DeploymentStateManager:
             ) and deployment_state.owns_direct_ingress_ports():
                 self._ingress_membership_version += 1
             deployment_state.broadcast_deployment_config_if_changed()
-            if deployment_state.should_autoscale():
+            if (
+                deployment_state.should_autoscale()
+                or deployment_state.target_info.deployment_config.autoscaling_metrics_config
+            ):
                 self._autoscaling_state_manager.update_running_replica_ids(
                     deployment_id=deployment_id,
                     running_replicas=deployment_state.get_running_replica_ids(),

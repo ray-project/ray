@@ -47,8 +47,82 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@PublicAPI(stability="alpha")
+class AutoscalingMetricsContext:
+    """Observed deployment state and replica metrics available to application policies.
+
+    Serve passes this context to the application policy for deployments that
+    report autoscaling metrics. Deployments that autoscale receive an
+    :class:`AutoscalingContext`, which also includes their scaling settings.
+
+    Args:
+        deployment_id: Unique identifier of the reporting deployment.
+        deployment_name: Name of the reporting deployment.
+        app_name: Name of the application containing the deployment, if available.
+        current_num_replicas: Number of replicas currently running.
+        running_replicas: Identifiers of the running replicas.
+        current_time: Controller timestamp in seconds since the Unix epoch, if available.
+        aggregated_metrics: Aggregated values keyed by metric name and replica ID,
+            or a callable that returns them on first access. May be None.
+        raw_metrics: Timestamped samples keyed by metric name and replica ID,
+            or a callable that returns them on first access. May be None.
+    """
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        deployment_name: str,
+        app_name: Optional[str],
+        current_num_replicas: int,
+        running_replicas: List[ReplicaID],
+        current_time: Optional[float],
+        aggregated_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, float]],
+                Callable[[], Dict[str, Dict[ReplicaID, float]]],
+            ]
+        ],
+        raw_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, TimeSeries]],
+                Callable[[], Dict[str, Dict[ReplicaID, TimeSeries]]],
+            ]
+        ],
+    ):
+        self.deployment_id = deployment_id
+        self.deployment_name = deployment_name
+        self.app_name = app_name
+        self.current_num_replicas = current_num_replicas
+        self.running_replicas = running_replicas
+        self.current_time = current_time
+        self._aggregated_metrics_value = aggregated_metrics
+        self._raw_metrics_value = raw_metrics
+
+    @cached_property
+    def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
+        """Custom metrics aggregated per replica over the look-back window.
+
+        Keyed by metric name, then by replica ID. Evaluated on first access and
+        cached.
+        """
+        if callable(self._aggregated_metrics_value):
+            return self._aggregated_metrics_value()
+        return self._aggregated_metrics_value
+
+    @cached_property
+    def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
+        """Custom metric time series per replica.
+
+        Keyed by metric name, then by replica ID. Evaluated on first access and
+        cached.
+        """
+        if callable(self._raw_metrics_value):
+            return self._raw_metrics_value()
+        return self._raw_metrics_value
+
+
 @PublicAPI(stability="stable")
-class AutoscalingContext:
+class AutoscalingContext(AutoscalingMetricsContext):
     """Rich context provided to custom autoscaling policies.
 
     This class provides comprehensive information about a deployment's current state,
@@ -129,21 +203,17 @@ class AutoscalingContext:
         current_time: Optional[float],
         config: Optional[Any],
     ):
-        # Deployment information
-        self.deployment_id = deployment_id  #: Unique identifier for the deployment.
-        self.deployment_name = deployment_name  #: Name of the deployment.
-        self.app_name = app_name  #: Name of the application containing this deployment.
-
-        # Current state
-        self.current_num_replicas = (
-            current_num_replicas  #: Current number of running replicas.
+        super().__init__(
+            deployment_id=deployment_id,
+            deployment_name=deployment_name,
+            app_name=app_name,
+            current_num_replicas=current_num_replicas,
+            running_replicas=running_replicas,
+            current_time=current_time,
+            raw_metrics=raw_metrics,
+            aggregated_metrics=aggregated_metrics,
         )
-        self.target_num_replicas = (
-            target_num_replicas  #: Target number of replicas set by the autoscaler.
-        )
-        self.running_replicas = (
-            running_replicas  #: List of currently running replica IDs.
-        )
+        self.target_num_replicas = target_num_replicas
 
         # Built-in metrics
         self._total_num_requests_value = (
@@ -152,10 +222,6 @@ class AutoscalingContext:
         self._total_queued_requests_value = (
             total_queued_requests  #: Requests queued at handles.
         )
-
-        # Custom metrics - store potentially lazy callables privately
-        self._aggregated_metrics_value = aggregated_metrics
-        self._raw_metrics_value = raw_metrics
 
         # Capacity and bounds
         self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas  #: Minimum replicas adjusted for cluster capacity.
@@ -173,32 +239,9 @@ class AutoscalingContext:
         self.last_scale_down_time = (
             last_scale_down_time  #: Timestamp of last scale-down action.
         )
-        self.current_time = current_time  #: Current timestamp.
 
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
-
-    @cached_property
-    def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
-        """Custom metrics aggregated per replica over the look-back window.
-
-        Keyed by metric name, then by replica ID. Evaluated on first access and
-        cached.
-        """
-        if callable(self._aggregated_metrics_value):
-            return self._aggregated_metrics_value()
-        return self._aggregated_metrics_value
-
-    @cached_property
-    def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
-        """Custom metric time series per replica.
-
-        Keyed by metric name, then by replica ID. Evaluated on first access and
-        cached.
-        """
-        if callable(self._raw_metrics_value):
-            return self._raw_metrics_value()
-        return self._raw_metrics_value
 
     @cached_property
     def total_num_requests(self) -> float:

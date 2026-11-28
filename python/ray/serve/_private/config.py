@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
+    DEFAULT_METRICS_INTERVAL_S,
     AggregationFunction,
     AutoscalingConfig,
     BackpressureConfig,
@@ -120,6 +121,14 @@ def _proto_to_dict(proto: Message) -> Dict:
         ):
             data[field.name] = field.default_value
     return data
+
+
+class AutoscalingMetricsConfig(BaseModel):
+    """Experimental internal settings for publishing replica metrics to the controller."""
+
+    metrics_interval_s: PositiveFloat = DEFAULT_METRICS_INTERVAL_S
+    look_back_period_s: PositiveFloat = 30.0
+    aggregation_function: AggregationFunction = AggregationFunction.MEAN
 
 
 class DeploymentConfig(BaseModel):
@@ -212,6 +221,10 @@ class DeploymentConfig(BaseModel):
     health_check_timeout_s: PositiveFloat = Field(
         default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+
+    autoscaling_metrics_config: Optional[AutoscalingMetricsConfig] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
     autoscaling_config: Optional[AutoscalingConfig] = Field(
