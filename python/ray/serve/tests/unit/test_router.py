@@ -2283,6 +2283,40 @@ class TestChooseReplica:
         assert len(fake_request_router.routed_requests) == 1
         assert replica._requests_sent == []
 
+    async def test_choose_replica_no_reserve_spreads_tied_candidates(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """``_reserve=False`` doesn't probe queue lengths, so a rank of tied
+        candidates must not resolve to its first replica every time."""
+        router, fake_request_router = setup_router
+
+        replicas = [
+            FakeReplica(
+                ReplicaID(
+                    unique_id=f"test-replica-{i}",
+                    deployment_id=DeploymentID(name="test"),
+                )
+            )
+            for i in range(4)
+        ]
+        fake_request_router._replicas_list = replicas
+        fake_request_router._replicas = {r.replica_id: r for r in replicas}
+
+        async def choose_all_tied(candidate_replicas, pending_request=None):
+            return [candidate_replicas]
+
+        fake_request_router.choose_replicas = choose_all_tied
+
+        picked = set()
+        for _ in range(100):
+            async with router.choose_replica(
+                dummy_request_metadata(), _reserve=False
+            ) as selection:
+                picked.add(selection._replica.replica_id)
+
+        # P(a replica is never picked) < 4 * 0.75**100, about 1e-12.
+        assert picked == {r.replica_id for r in replicas}
+
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(

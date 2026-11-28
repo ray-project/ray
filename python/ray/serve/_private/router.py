@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import logging
+import random
 import sys
 import threading
 import time
@@ -1318,7 +1319,8 @@ class AsyncioRouter:
                         self._active_request_router._choose_replicas_with_backoff(pr)
                     )
                     try:
-                        replica = (await candidates.__anext__())[0]
+                        # Spread ties across replicas.
+                        replica = random.choice(await candidates.__anext__())
                     finally:
                         await candidates.aclose()
                 slot_token = None
