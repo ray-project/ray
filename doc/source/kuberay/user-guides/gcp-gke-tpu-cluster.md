@@ -36,6 +36,8 @@ gcloud container clusters create $CLUSTER_NAME \
     --num-nodes=1
 ```
 
+This command creates a default `e2-standard-16` CPU node pool for the Ray head Pod. Run the head Pod on a dedicated CPU node pool instead of scheduling it onto TPU worker nodes so that the Global Control Service (GCS), Ray dashboard, and job drivers stay off TPU host CPU and memory, and multi-host TPU node pools can autoscale down to zero without evicting the head Pod.
+
 To add a TPU node pool to the cluster, run the commands in one of the following tabs. You can also create the node pool from the [Google Cloud console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console).
 
 ::::{tab-set}

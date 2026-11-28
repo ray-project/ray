@@ -29,7 +29,9 @@ Ray supports both *single program, multiple data* (SPMD) and *multiple program, 
 
 ### TPU7x logical devices
 
-On [TPU7x](https://cloud.google.com/tpu/docs/tpu7x#dual-chiplet_architecture), each physical chip contains two compute chiplets that expose two logical TPU devices, so a four-chip `tpu7x-standard-4t` host has eight logical devices. By default, Ray registers one `TPU` resource per physical chip, which is `{"TPU": 4}` on this host. This default matches host-level SPMD workloads such as JAX. To run one process per logical device with `{"TPU": 1}` on TPU7x, set `RAY_TPU_RESOURCE_PER_CHIP=2` on both the head and worker containers and set `resources: '"{\"TPU\": 8}"'` in `rayStartParams` on the worker group.
+On [TPU7x](https://cloud.google.com/tpu/docs/tpu7x#dual-chiplet_architecture), each physical chip contains two compute chiplets that expose two logical TPU devices, so a four-chip `tpu7x-standard-4t` host has eight logical devices. By default, Ray registers one `TPU` resource per physical chip, which is `{"TPU": 4}` on this host and matches host-level SPMD workloads such as JAX.
+
+To run one process per logical device on TPU7x, set `RAY_TPU_RESOURCE_PER_CHIP=2` on both the head and worker containers and set `resources: '"{\"TPU\": 8}"'` in `rayStartParams` on the worker group. Each logical TPU device exposes half of the physical chip's HBM, or 96 GB on TPU7x, so an eight-chip `2x2x2` slice launches 16 `{"TPU": 1}` workers with 96 GB HBM each.
 
 (kuberay-tpu-get-started)=
 
@@ -161,7 +163,9 @@ trainer.fit()
 
 ## Schedule TPU workloads
 
-After KubeRay starts a Pod with TPU resources, the Pod can run tasks and actors that request TPUs. Ray exposes TPUs as a {ref}`custom resource <custom-resources>`, so a task or actor requests them with a decorator such as `@ray.remote(resources={"TPU": 1})`. When a worker requests a subset of a host's TPUs, Ray isolates the assigned chips with `TPU_VISIBLE_CHIPS` and sub-host bounds. For details, see {ref}`Accelerator support <accelerator-support>`.
+After KubeRay starts a Pod with TPU resources, the Pod can run tasks and actors that request TPUs. Ray exposes TPUs as a {ref}`custom resource <custom-resources>`, so a task or actor requests them with a decorator such as `@ray.remote(resources={"TPU": 1})`.
+
+When a worker requests a subset of a host's TPUs, Ray sets `TPU_VISIBLE_CHIPS` to the assigned physical chip indices and `TPU_VISIBLE_DEVICES` to the assigned logical device IDs. For one- or two-chip allocations, Ray also sets sub-host bounds, and on full-host allocations it clears both visibility variables so the framework uses the entire host. For details, see {ref}`Accelerator support <accelerator-support>`.
 
 (kuberay-tpu-labels)=
 
@@ -227,14 +231,86 @@ slice_handle.shutdown()
 
 To run one task per logical TPU device instead, pass `resources_per_bundle={"TPU": 1}`, as the {ref}`Ray Core example <kuberay-tpu-get-started>` does.
 
+To confirm on a running cluster that every bundle of a slice placement group targets the same physical slice, inspect the per-bundle `label_selector` entries with the State CLI:
+
+```bash
+ray list placement-groups --detail
+```
+
+Each bundle in a single-slice placement group carries the same `ray.io/tpu-slice-name` value under `label_selector`.
+
+#### `SubslicePlacementGroup`
+
+{class}`~ray.util.tpu.SubslicePlacementGroup` reserves a contiguous whole-host sub-torus within a larger multi-host TPU slice so multiple workloads can share the slice while keeping ICI topology alignment. On the first call for an undiscovered parent slice, {func}`ray.util.tpu.subslice_placement_group` temporarily reserves the parent slice to query physical chip coordinates through JAX, caches each host's mesh position, and releases unused hosts. Install `jax[tpu]` on the TPU worker nodes for this initial discovery step.
+
+After the placement group is ready, call {meth}`~ray.util.tpu.SubslicePlacementGroup.get_torchtpu_env_vars` to derive `TORCH_TPU_TOPOLOGY`, `TORCH_TPU_SLICEBUILDER_ADDRESSES`, and `MASTER_ADDR` from the placed subslice hosts. The following example reserves a two-host `2x4` subslice inside a larger TPU v6e slice and runs a distributed TorchTPU collective across its eight devices:
+
+```python
+import ray
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.tpu import subslice_placement_group
+
+# Reserve an eight-chip 2x4 subslice (two four-chip hosts) inside a larger
+# v6e slice such as 4x4, with one bundle per logical TPU device.
+subslice = subslice_placement_group(
+    subslice_topology="2x4",
+    accelerator_version="v6e",
+    resources_per_bundle={"TPU": 1},
+)
+ray.get(subslice.placement_group.ready())
+
+
+@ray.remote(resources={"TPU": 1})
+def subslice_worker():
+    import torch
+    import torch.distributed as dist
+    import torch_tpu  # Register the "tpu" device and "tpu_dist" backend.
+
+    dist.init_process_group(backend="tpu_dist")
+    x = torch.ones(4, device="tpu")
+    dist.all_reduce(x)
+    total = x.sum().item()
+    dist.destroy_process_group()
+    return total
+
+
+world_size = subslice.placement_group.bundle_count
+bundles_per_host = world_size // subslice.num_hosts
+
+tasks = [
+    subslice_worker.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=subslice.placement_group,
+            placement_group_bundle_index=rank,
+        ),
+        runtime_env={
+            "env_vars": {
+                **subslice.get_torchtpu_env_vars(
+                    worker_id=rank // bundles_per_host
+                ),
+                "MASTER_PORT": "29500",
+                "WORLD_SIZE": str(world_size),
+                "RANK": str(rank),
+                "LOCAL_RANK": str(rank % bundles_per_host),
+            }
+        },
+    ).remote()
+    for rank in range(world_size)
+]
+print(ray.get(tasks))
+subslice.shutdown()
+```
+
 #### TPU Pod information utilities
 
-The following helper functions in `ray.util.tpu` query TPU slice metadata and configure multi-slice coordination:
+The following helper functions in `ray.util.tpu` query TPU slice metadata and configure distributed TPU environment variables:
 
 - {func}`ray.util.tpu.get_current_pod_name`: Returns the name of the TPU Pod slice that the worker belongs to, or `None` when the worker isn't on a TPU.
 - {func}`ray.util.tpu.get_current_pod_worker_count`: Returns the number of hosts in the TPU Pod slice that the worker belongs to, or `None` when the worker isn't on a TPU.
 - {func}`ray.util.tpu.get_num_tpu_chips_on_node`: Returns the number of TPU chips on the current node, or `0` when it finds none.
 - {func}`ray.util.tpu.get_num_ready_tpu_slices`: Returns the number of ready, idle TPU slices that match `topology` and `accelerator_type`.
+- {func}`ray.util.tpu.get_torchtpu_env_vars`: Returns `TORCH_TPU_TOPOLOGY`, `TORCH_TPU_SLICEBUILDER_ADDRESSES`, `MASTER_ADDR`, and host environment variables for TorchTPU workers.
+- {func}`ray.util.tpu.get_jax_env_vars`: Returns `TPU_WORKER_HOSTNAMES`, `TPU_PROCESS_ADDRESSES`, `TPU_PROCESS_PORT`, and optional bounds variables for JAX workers.
 - {func}`ray.util.tpu.get_tpu_coordinator_env_vars`: Returns the `MEGASCALE_*` environment variables that multi-slice coordination requires.
 
 ## Reinforcement learning on TPUs
@@ -265,6 +341,30 @@ Run tasks or actors on every host of a multi-host replica. Ray considers a host 
 ## Configure Kubernetes Pods for TPUs
 
 To use TPUs, set `google.com/tpu` in the `limits` and `requests` of the container in each TPU `workerGroupSpecs` entry of your RayCluster. This resource tells GKE how many TPU chips to attach to each Pod. Set `numOfHosts` on the worker group to specify the number of TPU hosts per replica. For multi-host worker groups, KubeRay treats each replica as a TPU Pod slice rather than a single worker and creates `numOfHosts` worker Pods per replica. GKE schedules the Pods onto the right machines with the `cloud.google.com/gke-tpu-accelerator` and `cloud.google.com/gke-tpu-topology` node selectors.
+
+In `headGroupSpec`, set `num-cpus: "0"` under `rayStartParams` so Ray advertises zero logical CPUs on the head Pod and doesn't schedule CPU tasks, actors, or dataset preprocessing onto it. When a TPU7x worker group runs one process per logical device, also set `RAY_TPU_RESOURCE_PER_CHIP: "2"` on the head container so driver-side slice placement calculations match the worker nodes. For more head Pod settings, see {ref}`RayCluster configuration <kuberay-num-cpus>`.
+
+```yaml
+headGroupSpec:
+  rayStartParams:
+    num-cpus: "0"
+  template:
+    spec:
+      containers:
+        - name: ray-head
+          image: rayproject/ray:2.59.0
+          # Set when a TPU7x worker group uses one process per logical device:
+          # env:
+          #   - name: RAY_TPU_RESOURCE_PER_CHIP
+          #     value: "2"
+          resources:
+            requests:
+              cpu: "8"
+              memory: "32G"
+            limits:
+              cpu: "8"
+              memory: "32G"
+```
 
 For complete RayCluster manifests, see [`ray-cluster.tpu-v6e-singlehost.yaml`](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.tpu-v6e-singlehost.yaml) and [`ray-cluster.tpu-v6e-16-multihost.yaml`](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.tpu-v6e-16-multihost.yaml) in the KubeRay repository. The following snippets show the `workerGroupSpecs` configuration for TPU v6e and TPU7x slices:
 
