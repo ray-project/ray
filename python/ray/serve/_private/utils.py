@@ -706,18 +706,13 @@ def get_all_live_placement_group_names() -> List[str]:
     return live_pg_names
 
 
-def get_active_placement_group_ids() -> Set[str]:
-    """Retrieve the set of placement group IDs referenced by alive Serve actors.
-
-    Returns:
-        The set of placement group IDs referenced by alive Serve actors.
-    """
+def _list_alive_serve_actors() -> list:
     # TODO (jeffreywang): Move the imports to the top of the file.
     # https://github.com/ray-project/ray/issues/61330
     from ray.util.state import list_actors
     from ray.util.state.common import RAY_MAX_LIMIT_FROM_API_SERVER
 
-    actors = list_actors(
+    return list_actors(
         filters=[
             ("ray_namespace", "=", SERVE_NAMESPACE),
             ("state", "=", "ALIVE"),
@@ -727,10 +722,31 @@ def get_active_placement_group_ids() -> Set[str]:
         raise_on_missing_output=False,
     )
 
+
+def get_active_placement_group_ids() -> Set[str]:
+    """Retrieve the set of placement group IDs referenced by alive Serve actors.
+
+    Returns:
+        The set of placement group IDs referenced by alive Serve actors.
+    """
     return {
         actor.placement_group_id
-        for actor in actors
+        for actor in _list_alive_serve_actors()
         if actor.placement_group_id is not None
+    }
+
+
+def get_actor_placement_group_ids() -> Dict[str, str]:
+    """Map each alive, named Serve actor in a placement group to that PG's ID.
+
+    Returns:
+        Actor name to placement group ID, for alive Serve actors that are named
+        and run in a placement group.
+    """
+    return {
+        actor.name: actor.placement_group_id
+        for actor in _list_alive_serve_actors()
+        if actor.name and actor.placement_group_id is not None
     }
 
 

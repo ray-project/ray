@@ -56,6 +56,24 @@ class DeploymentID:
         return str(self)
 
 
+def make_gang_pg_name(
+    deployment_id: DeploymentID, gang_index: int, gang_id: str
+) -> str:
+    """Name of a gang's placement group. It ends with the gang ID.
+
+    gang_id must not contain '_': gang_id_from_pg_name splits on the last one.
+    """
+    return (
+        f"{GANG_PG_NAME_PREFIX}{deployment_id.app_name}"
+        f"_{deployment_id.name}_{gang_index}_{gang_id}"
+    )
+
+
+def gang_id_from_pg_name(pg_name: str) -> str:
+    """Gang ID of a placement group named by make_gang_pg_name."""
+    return pg_name.rsplit("_", 1)[-1]
+
+
 @PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class ReplicaID:
