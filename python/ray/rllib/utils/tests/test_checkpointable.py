@@ -20,6 +20,32 @@ class TestCheckpointable(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
+    def test_save_connector_pipeline_with_stateless_connectors(self):
+        """Tests saving a pipeline whose connectors have an empty state.
+
+        `ConnectorPipelineV2.get_state()` leaves out connectors with an empty state,
+        which used to make `save_to_path()` fail with a `KeyError`.
+        """
+        import gymnasium as gym
+
+        from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
+        from ray.rllib.connectors.module_to_env.get_actions import GetActions
+
+        pipeline = ModuleToEnvPipeline(
+            input_observation_space=gym.spaces.Box(-1.0, 1.0, (2,)),
+            input_action_space=gym.spaces.Discrete(2),
+            connectors=[GetActions()],
+        )
+        with TemporaryDirectory() as dir1, TemporaryDirectory() as dir2:
+            pipeline.save_to_path(dir1)
+            restored = ModuleToEnvPipeline.from_checkpoint(dir1)
+            self.assertEqual(
+                [type(c) for c in restored.connectors],
+                [type(c) for c in pipeline.connectors],
+            )
+            # Saving the restored pipeline again must work as well.
+            restored.save_to_path(dir2)
+
     def test_checkpoint_backward_compatibility(self):
         """Tests backward compat. of checkpoints created with older versions of ray."""
 

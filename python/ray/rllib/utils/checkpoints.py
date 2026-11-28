@@ -303,7 +303,13 @@ class Checkpointable(abc.ABC):
                 if _state_provided:
                     comp_state = state.pop(comp_name)
                 else:
-                    comp_state = self.get_state(components=comp_name)[comp_name]
+                    comp_state = self.get_state(components=comp_name).get(comp_name)
+                    # Some `get_state()` implementations (e.g. `ConnectorPipelineV2`)
+                    # leave out components with an empty state. Skip these, like
+                    # above for a provided `state`. `restore_from_path` ignores
+                    # missing component dirs.
+                    if comp_state is None:
+                        continue
                 # By providing the `state` arg, we make sure that the component does not
                 # have to call its own `get_state()` anymore, but uses what's provided
                 # here.
