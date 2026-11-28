@@ -1336,4 +1336,4 @@ RAY_CONFIG(bool, enable_worker_fork_server, false)
 
 /// Timeout in milliseconds for a fork server socket request before falling back to
 /// starting a fresh worker process.
-RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 500)
+RAY_CONFIG(int64_t, worker_fork_server_timeout_ms, 100)

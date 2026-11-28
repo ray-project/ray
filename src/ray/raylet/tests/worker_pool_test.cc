@@ -17,15 +17,29 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <list>
 #include <memory>
 #include <random>
 #include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#ifdef __linux__
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
@@ -171,11 +185,12 @@ class FakeWorkerPoolForTest : public WorkerPool {
       ClockInterface &clock,
       int min_worker_port = 0,
       int max_worker_port = 0,
-      const std::vector<int> &worker_ports = {})
+      const std::vector<int> &worker_ports = {},
+      NodeID node_id = NodeID::FromRandom())
       : WorkerPool(
             io_service,
             PeriodicalRunner::Create(io_service),
-            NodeID::FromRandom(),
+            node_id,
             "",
             [this]() { return num_available_cpus_; },
             PYTHON_PRESTART_WORKERS,
@@ -190,6 +205,7 @@ class FakeWorkerPoolForTest : public WorkerPool {
             0,
             clock,
             worker_pool_metrics),
+        test_node_id_(node_id),
         last_worker_pid_(-1),
         instrumented_io_service_(io_service),
         client_call_manager_(instrumented_io_service_, false, /*local_address=*/""),
@@ -428,9 +444,12 @@ class FakeWorkerPoolForTest : public WorkerPool {
     return popped_worker;
   }
 
+  const NodeID &GetNodeId() const { return test_node_id_; }
+
   int num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 
  private:
+  const NodeID test_node_id_;
   pid_t last_worker_pid_;
   // The worker commands by process.
   absl::flat_hash_map<pid_t, std::vector<std::string>> worker_commands_by_proc_;
@@ -721,20 +740,29 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithRuntimeEnv) {
   LeaseSpecification lease_spec = ExampleLeaseSpec();
+  const std::string serialized_env = "{\"env_vars\": {\"FOO\": \"bar\"}}";
   lease_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
-      "{\"env_vars\": {\"FOO\": \"bar\"}}");
+      serialized_env);
   // Prestarts 2 workers.
   worker_pool_->PrestartWorkers(lease_spec, 2);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+  ASSERT_EQ(GetReferenceCount(serialized_env), 2);
   // Prestarts 1 more worker.
   worker_pool_->PrestartWorkers(lease_spec, 3);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  ASSERT_EQ(GetReferenceCount(serialized_env), 3);
   // No more needed.
   worker_pool_->PrestartWorkers(lease_spec, 1);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   // Capped by soft limit.
   worker_pool_->PrestartWorkers(lease_spec, 20);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
+  ASSERT_EQ(GetReferenceCount(serialized_env), POOL_SIZE_SOFT_LIMIT);
+  // Rate-limited prestarts exceeding MAXIMUM_STARTUP_CONCURRENCY must release their
+  // runtime_env references instead of leaking pins in RuntimeEnvAgent.
+  worker_pool_->PrestartWorkersInternal(lease_spec, MAXIMUM_STARTUP_CONCURRENCY + 3);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), MAXIMUM_STARTUP_CONCURRENCY);
+  ASSERT_EQ(GetReferenceCount(serialized_env), MAXIMUM_STARTUP_CONCURRENCY);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
@@ -2751,5 +2779,479 @@ TEST_F(WorkerPoolPortRangeTest, AssignsUniquePortsFromTheConfiguredRange) {
         << "Port " << port << " was assigned to two workers.";
   }
 }
+
+#ifdef __linux__
+namespace {
+
+int SendForkReplyWithLifetimePipe(int conn_fd, pid_t pid) {
+  int life_pipe[2] = {-1, -1};
+  EXPECT_EQ(pipe2(life_pipe, O_CLOEXEC), 0);
+  std::string reply = "{\"pid\": " + std::to_string(pid) + "}\n";
+  struct iovec iov = {reply.data(), reply.size()};
+  alignas(struct cmsghdr) char cmsg_buf[CMSG_SPACE(sizeof(int))] = {};
+  struct msghdr msg = {};
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  msg.msg_control = cmsg_buf;
+  msg.msg_controllen = sizeof(cmsg_buf);
+  struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+  cmsg->cmsg_level = SOL_SOCKET;
+  cmsg->cmsg_type = SCM_RIGHTS;
+  cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+  std::memcpy(CMSG_DATA(cmsg), &life_pipe[0], sizeof(int));
+  ssize_t sent = sendmsg(conn_fd, &msg, 0);
+  EXPECT_EQ(sent, static_cast<ssize_t>(reply.size()));
+  close(life_pipe[0]);
+  return life_pipe[1];
+}
+
+std::string ReadForkRequestLine(int conn_fd) {
+  std::string request;
+  char buf[1024];
+  while (request.find('\n') == std::string::npos) {
+    ssize_t bytes_read = read(conn_fd, buf, sizeof(buf));
+    if (bytes_read <= 0) {
+      break;
+    }
+    request.append(buf, static_cast<size_t>(bytes_read));
+  }
+  return request;
+}
+
+struct MockForkServer {
+  explicit MockForkServer(std::string sock_path) : path(std::move(sock_path)) {
+    unlink(path.c_str());
+    listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    RAY_CHECK_GE(listen_fd, 0);
+    struct sockaddr_un addr = {};
+    addr.sun_family = AF_UNIX;
+    RAY_CHECK_LT(path.size(), sizeof(addr.sun_path));
+    std::memcpy(addr.sun_path, path.data(), path.size());
+    RAY_CHECK_EQ(
+        bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)), 0);
+    RAY_CHECK_EQ(listen(listen_fd, 8), 0);
+  }
+
+  MockForkServer(const MockForkServer &) = delete;
+  MockForkServer &operator=(const MockForkServer &) = delete;
+
+  ~MockForkServer() {
+    if (listen_fd >= 0) {
+      close(listen_fd);
+    }
+    unlink(path.c_str());
+  }
+
+  std::thread ServeOnce(pid_t reply_pid,
+                        int *out_life_w = nullptr,
+                        std::string *received_req = nullptr,
+                        bool omit_scm_rights = false) const {
+    return std::thread(
+        [fd = listen_fd, reply_pid, out_life_w, received_req, omit_scm_rights]() {
+          int conn_fd = accept(fd, nullptr, nullptr);
+          if (conn_fd < 0) {
+            return;
+          }
+          std::string request = ReadForkRequestLine(conn_fd);
+          if (received_req != nullptr) {
+            *received_req = std::move(request);
+          }
+          if (omit_scm_rights) {
+            std::string reply = "{\"pid\": " + std::to_string(reply_pid) + "}\n";
+            EXPECT_EQ(write(conn_fd, reply.data(), reply.size()),
+                      static_cast<ssize_t>(reply.size()));
+          } else {
+            int life_w = SendForkReplyWithLifetimePipe(conn_fd, reply_pid);
+            if (out_life_w != nullptr) {
+              *out_life_w = life_w;
+            } else {
+              close(life_w);
+            }
+          }
+          close(conn_fd);
+        });
+  }
+
+  std::string path;
+  int listen_fd = -1;
+};
+
+}  // namespace
+
+class WorkerPoolForkServerTest : public WorkerPoolTest {
+ public:
+  void SetUp() override {
+    WorkerPoolTest::SetUp();
+    prev_enable_fork_server_ = RayConfig::instance().enable_worker_fork_server();
+    prev_fork_timeout_ms_ = RayConfig::instance().worker_fork_server_timeout_ms();
+    prev_register_timeout_s_ = RayConfig::instance().worker_register_timeout_seconds();
+    prev_enable_prestart_ = RayConfig::instance().enable_worker_prestart();
+    prev_prestart_first_driver_ = RayConfig::instance().prestart_worker_first_driver();
+
+    RayConfig::instance().enable_worker_fork_server() = true;
+    RayConfig::instance().worker_fork_server_timeout_ms() = 100;
+    RayConfig::instance().worker_register_timeout_seconds() = 60;
+
+    static int dir_seq = 0;
+    temp_dir_ =
+        "/tmp/ray_wp_fs_" + std::to_string(getpid()) + "_" + std::to_string(++dir_seq);
+    session_name_ = "session_test";
+    sockets_dir_ = temp_dir_ + "/" + session_name_ + "/sockets";
+    std::filesystem::create_directories(sockets_dir_);
+
+    ResetWorkerPool();
+  }
+
+  void TearDown() override {
+    WorkerPoolTest::TearDown();
+    retired_pools_.clear();
+    std::error_code ec;
+    std::filesystem::remove_all(temp_dir_, ec);
+    RayConfig::instance().enable_worker_fork_server() = prev_enable_fork_server_;
+    RayConfig::instance().worker_fork_server_timeout_ms() = prev_fork_timeout_ms_;
+    RayConfig::instance().worker_register_timeout_seconds() = prev_register_timeout_s_;
+    RayConfig::instance().enable_worker_prestart() = prev_enable_prestart_;
+    RayConfig::instance().prestart_worker_first_driver() = prev_prestart_first_driver_;
+  }
+
+  void ResetWorkerPool(std::vector<std::string> extra_py_args = {},
+                       std::vector<std::string> py_prefix = {
+                           "python", "ray/workers/setup_worker.py"}) {
+    if (worker_pool_) {
+      retired_pools_.push_back(std::move(worker_pool_));
+    }
+    std::vector<std::string> py_cmd = std::move(py_prefix);
+    py_cmd.insert(py_cmd.end(),
+                  {"ray/workers/default_worker.py",
+                   "--temp-dir=" + temp_dir_ + "/",
+                   "--session-name=" + session_name_,
+                   "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+                   "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"});
+    py_cmd.insert(py_cmd.end(), extra_py_args.begin(), extra_py_args.end());
+    SetWorkerCommands({{Language::PYTHON, std::move(py_cmd)},
+                       {Language::JAVA,
+                        {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<FakeRuntimeEnvAgentClient>());
+  }
+
+  std::string DefaultForkServerSocketPath() const {
+    return sockets_dir_ + "/fs_" + worker_pool_->GetNodeId().Hex().substr(0, 8) + "_0";
+  }
+
+  std::tuple<const ProcessInterface &, WorkerID> StartPyWorker(
+      const std::string &ctx_json = "",
+      const rpc::RuntimeEnvInfo &env_info = {},
+      const std::vector<std::string> &dynamic_options = {},
+      int runtime_env_hash = 0) {
+    PopWorkerStatus status = PopWorkerStatus::OK;
+    return worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                            rpc::WorkerType::WORKER,
+                                            JOB_ID,
+                                            &status,
+                                            dynamic_options,
+                                            runtime_env_hash,
+                                            ctx_json,
+                                            env_info);
+  }
+
+  static int64_t ElapsedMs(std::chrono::steady_clock::time_point start) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - start)
+        .count();
+  }
+
+  std::string temp_dir_;
+  std::string session_name_;
+  std::string sockets_dir_;
+
+ private:
+  std::vector<std::unique_ptr<FakeWorkerPoolForTest>> retired_pools_;
+  bool prev_enable_fork_server_ = false;
+  int64_t prev_fork_timeout_ms_ = 0;
+  int64_t prev_register_timeout_s_ = 0;
+  bool prev_enable_prestart_ = false;
+  bool prev_prestart_first_driver_ = false;
+};
+
+TEST_F(WorkerPoolForkServerTest, SuppressesBootPrestartAndUnblocksFirstDriver) {
+  // 1. With enable_worker_prestart=true, WorkerPool::Start() skips Python prestart.
+  RayConfig::instance().enable_worker_prestart() = true;
+  RayConfig::instance().prestart_worker_first_driver() = false;
+  ResetWorkerPool();
+  worker_pool_->Start();
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 0);
+
+  // 2. With production default (prestart_worker_first_driver=true), RegisterDriver()
+  // skips prestart and sends the reply immediately.
+  RayConfig::instance().enable_worker_prestart() = false;
+  RayConfig::instance().prestart_worker_first_driver() = true;
+  ResetWorkerPool();
+  worker_pool_->Start();
+  std::shared_ptr<WorkerInterface> driver = worker_pool_->CreateWorker(
+      WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::PYTHON, JOB_ID);
+  bool driver_reply_sent = false;
+  ASSERT_TRUE(worker_pool_
+                  ->RegisterDriver(driver,
+                                   rpc::JobConfig(),
+                                   [&driver_reply_sent](Status s, int) {
+                                     EXPECT_TRUE(s.ok());
+                                     driver_reply_sent = true;
+                                   })
+                  .ok());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 0);
+  EXPECT_TRUE(driver_reply_sent);
+}
+
+TEST_F(WorkerPoolForkServerTest, DefaultSocketLifetimePipeAndLiveBypasses) {
+  RegisterDriver();
+  MockForkServer default_server(DefaultForkServerSocketPath());
+
+  // 1. SPILL_WORKER and non-empty dynamic_options bypass a live, healthy default socket.
+  PopWorkerStatus status = PopWorkerStatus::OK;
+  auto [spill_proc, spill_wid] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
+  EXPECT_FALSE(spill_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  auto [dyn_proc, dyn_wid] = StartPyWorker("", {}, {"--custom-flag"});
+  EXPECT_FALSE(dyn_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 2);
+
+  // 2. Normal worker hits node-scoped default socket, transfers lifetime pipe, and honors
+  // KillAsync safety.
+  const pid_t expected_pid = getpid();
+  int life_w = -1;
+  std::thread server_thread = default_server.ServeOnce(expected_pid, &life_w);
+  auto [proc, wid] = StartPyWorker();
+  server_thread.join();
+  EXPECT_EQ(proc.GetId(), expected_pid);
+  ASSERT_FALSE(wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 2);
+  EXPECT_TRUE(proc.IsAlive());
+
+  std::shared_ptr<WorkerInterface> registered_worker =
+      worker_pool_->CreateWorker(wid, nullptr, Language::PYTHON);
+  ASSERT_TRUE(
+      worker_pool_->RegisterWorker(registered_worker, proc.GetId(), [](Status, int) {})
+          .ok());
+  EXPECT_TRUE(registered_worker->GetProcess().IsAlive());
+
+  close(life_w);
+  EXPECT_FALSE(proc.IsAlive());
+  EXPECT_FALSE(registered_worker->GetProcess().IsAlive());
+  // Must skip SIGTERM once the lifetime pipe closes (simulating PID reuse).
+  registered_worker->KillAsync(io_service_, /*force=*/false);
+  worker_pool_->DisconnectWorker(registered_worker,
+                                 rpc::WorkerExitType::INTENDED_USER_EXIT);
+
+  // 3. Interpreter flags (e.g. python -s) or wrapper prefixes before default_worker.py
+  // must fall back to execvpe, while a bare interpreter prefix still uses the server.
+  for (const std::vector<std::string> &unsupported_prefix :
+       std::vector<std::vector<std::string>>{
+           {"python", "-s"},
+           {"wrapper_bin", "python"},
+           {"python", "other_script.py"},
+       }) {
+    ResetWorkerPool({}, unsupported_prefix);
+    RegisterDriver();
+    MockForkServer node_server(DefaultForkServerSocketPath());
+    auto [bypass_proc, bypass_wid] = StartPyWorker();
+    EXPECT_FALSE(bypass_wid.IsNil());
+    EXPECT_EQ(worker_pool_->GetProcessSize(), 1);
+  }
+
+  ResetWorkerPool({}, {"python"});
+  RegisterDriver();
+  MockForkServer bare_py_server(DefaultForkServerSocketPath());
+  int bare_life_w = -1;
+  std::thread bare_thread = bare_py_server.ServeOnce(expected_pid, &bare_life_w);
+  auto [bare_proc, bare_wid] = StartPyWorker();
+  bare_thread.join();
+  close(bare_life_w);
+  EXPECT_EQ(bare_proc.GetId(), expected_pid);
+  EXPECT_FALSE(bare_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 0);
+}
+
+TEST_F(WorkerPoolForkServerTest, RuntimeEnvFormattingAndClientSideFallbackGuards) {
+  RegisterDriver();
+  MockForkServer env_server(sockets_dir_ + "/env.sock");
+  rpc::RuntimeEnvInfo env_info;
+  env_info.set_serialized_runtime_env(
+      R"({"preload_modules":["torch"],"env_vars":{"CUSTOM_ENV_VAR":"custom_val"}})");
+
+  // 1. Oversized (> 4 MiB) request falls back before connecting (no cooldown).
+  json oversized_ctx = {
+      {"fork_server_socket_path", env_server.path},
+      {"env_vars", {{"BIG_VAR", std::string(4 * 1024 * 1024 + 1024, 'a')}}},
+  };
+  auto [big_proc, big_wid] = StartPyWorker(oversized_ctx.dump(), env_info, {}, 123);
+  EXPECT_FALSE(big_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  // 2. Valid request on the same healthy socket still succeeds and formats fields.
+  const pid_t expected_fork_pid = static_cast<pid_t>(Process::PID_MAX_LIMIT + 999);
+  std::string received_request;
+  int fork_life_w = -1;
+  std::thread server_thread =
+      env_server.ServeOnce(expected_fork_pid, &fork_life_w, &received_request);
+  json ctx_json = {
+      {"fork_server_socket_path", env_server.path},
+      {"env_vars", {{"CUSTOM_ENV_VAR", "custom_val"}}},
+  };
+  auto [proc, worker_id] = StartPyWorker(ctx_json.dump(), env_info, {}, 123);
+  server_thread.join();
+  close(fork_life_w);
+  EXPECT_EQ(proc.GetId(), expected_fork_pid);
+  EXPECT_FALSE(worker_id.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  const json req_json = json::parse(received_request, nullptr, false);
+  ASSERT_FALSE(req_json.is_discarded());
+  ASSERT_TRUE(req_json.contains("args"));
+  ASSERT_TRUE(req_json.contains("env"));
+  ASSERT_TRUE(req_json.contains("runtime_env_vars"));
+  EXPECT_FALSE(req_json.contains("deadline_ms"));
+  for (const json &arg : req_json["args"]) {
+    const std::string arg_str = arg.get<std::string>();
+    EXPECT_EQ(arg_str.find("--serialized-runtime-env-context="), std::string::npos);
+    EXPECT_EQ(arg_str.find("--language="), std::string::npos);
+  }
+  EXPECT_EQ(req_json["env"]["RAY_JOB_ID"].get<std::string>(), JOB_ID.Hex());
+  EXPECT_FALSE(req_json["env"].contains("CUSTOM_ENV_VAR"));
+  EXPECT_EQ(req_json["runtime_env_vars"]["CUSTOM_ENV_VAR"].get<std::string>(),
+            "custom_val");
+
+  // 3. Non-UTF-8 worker arg falls back cleanly without connecting or corrupting data.
+  ResetWorkerPool({"--bad-utf8=\xff\xfe"});
+  RegisterDriver();
+  auto [utf8_proc, utf8_wid] = StartPyWorker(ctx_json.dump(), env_info, {}, 123);
+  EXPECT_NE(utf8_proc.GetId(), expected_fork_pid);
+  EXPECT_FALSE(utf8_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 1);
+}
+
+TEST_F(WorkerPoolForkServerTest, TimeoutCooldownRespawnAndMissingFd) {
+  RegisterDriver();
+  MockForkServer env_server(sockets_dir_ + "/cooldown.sock");
+  const std::string ctx = json{{"fork_server_socket_path", env_server.path}}.dump();
+
+  // 1. First timeout immediately triggers cooldown and mints a fresh WorkerID on
+  // fallback (rejecting registration from the timed-out WorkerID).
+  const auto start_time = std::chrono::steady_clock::now();
+  auto [timeout_proc, timeout_wid] = StartPyWorker(ctx, {}, {}, 123);
+  const int64_t elapsed_ms = ElapsedMs(start_time);
+  EXPECT_FALSE(timeout_wid.IsNil());
+  EXPECT_GE(elapsed_ms, 80);
+  EXPECT_LT(elapsed_ms, 1000);
+
+  int stalled_fd = accept(env_server.listen_fd, nullptr, nullptr);
+  ASSERT_GE(stalled_fd, 0);
+  std::string stalled_req = ReadForkRequestLine(stalled_fd);
+  close(stalled_fd);
+  const json stalled_json = json::parse(stalled_req, nullptr, false);
+  ASSERT_TRUE(stalled_json.is_object());
+  std::string timed_out_req_worker_id;
+  for (const json &arg : stalled_json["args"]) {
+    const std::string arg_str = arg.get<std::string>();
+    constexpr std::string_view kWidPrefix = "--worker-id=";
+    if (arg_str.rfind(kWidPrefix, 0) == 0) {
+      timed_out_req_worker_id = arg_str.substr(kWidPrefix.size());
+    }
+  }
+  ASSERT_FALSE(timed_out_req_worker_id.empty());
+  EXPECT_NE(timed_out_req_worker_id, timeout_wid.Hex());
+  std::shared_ptr<WorkerInterface> stale_worker = worker_pool_->CreateWorker(
+      WorkerID::FromHex(timed_out_req_worker_id), nullptr, Language::PYTHON);
+  EXPECT_TRUE(
+      worker_pool_->RegisterWorker(stale_worker, 12345, [](Status, int) {}).IsInvalid());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  // 2. While in cooldown, spawns bypass immediately (< 80 ms).
+  const auto cooldown_start = std::chrono::steady_clock::now();
+  StartPyWorker(ctx, {}, {}, 123);
+  EXPECT_LT(ElapsedMs(cooldown_start), 80);
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 2);
+
+  // 3. Advancing FakeClock past 5 s retries once; a timeout immediately re-enters
+  // cooldown.
+  fake_clock_.AdvanceTime(absl::Milliseconds(5001));
+  const auto probe_start = std::chrono::steady_clock::now();
+  StartPyWorker(ctx, {}, {}, 123);
+  EXPECT_GE(ElapsedMs(probe_start), 80);
+  int probe_fd = accept(env_server.listen_fd, nullptr, nullptr);
+  ASSERT_GE(probe_fd, 0);
+  close(probe_fd);
+
+  const auto reentered_start = std::chrono::steady_clock::now();
+  StartPyWorker(ctx, {}, {}, 123);
+  EXPECT_LT(ElapsedMs(reentered_start), 80);
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 4);
+
+  // 4. Atomic rename() with a new inode clears active cooldown immediately without
+  // advancing the clock.
+  std::string tmp_respawn_sock = env_server.path + ".new";
+  MockForkServer respawn_server(tmp_respawn_sock);
+  ASSERT_EQ(std::rename(tmp_respawn_sock.c_str(), env_server.path.c_str()), 0);
+
+  const pid_t expected_respawn_pid = static_cast<pid_t>(Process::PID_MAX_LIMIT + 1001);
+  int respawn_life_w = -1;
+  std::thread respawn_thread =
+      respawn_server.ServeOnce(expected_respawn_pid, &respawn_life_w);
+  auto [respawn_proc, respawn_wid] = StartPyWorker(ctx, {}, {}, 123);
+  respawn_thread.join();
+  close(respawn_life_w);
+  EXPECT_EQ(respawn_proc.GetId(), expected_respawn_pid);
+  EXPECT_FALSE(respawn_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 4);
+
+  // 5. Missing SCM_RIGHTS lifetime fd triggers immediate cooldown; unlinking
+  // clears stale cooldown state and falls back cleanly.
+  std::thread no_scm_thread =
+      respawn_server.ServeOnce(12345, nullptr, nullptr, /*omit_scm_rights=*/true);
+  auto [no_scm_proc, no_scm_wid] = StartPyWorker(ctx, {}, {}, 123);
+  no_scm_thread.join();
+  EXPECT_NE(no_scm_proc.GetId(), 12345);
+  EXPECT_FALSE(no_scm_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 5);
+
+  const auto after_no_scm_start = std::chrono::steady_clock::now();
+  StartPyWorker(ctx, {}, {}, 123);
+  EXPECT_LT(ElapsedMs(after_no_scm_start), 80);
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 6);
+
+  unlink(env_server.path.c_str());
+  StartPyWorker(ctx, {}, {}, 123);
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 7);
+}
+
+TEST_F(WorkerPoolForkServerTest, SlowTrickleStaysWithinSingleDeadline) {
+  RegisterDriver();
+  MockForkServer trickle_server(sockets_dir_ + "/trickle.sock");
+  std::thread trickle_thread([listen_fd = trickle_server.listen_fd]() {
+    int conn_fd = accept(listen_fd, nullptr, nullptr);
+    if (conn_fd >= 0) {
+      (void)ReadForkRequestLine(conn_fd);
+      const char *partial = "{\"pid\":12345";
+      for (size_t i = 0; i < std::strlen(partial); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (send(conn_fd, &partial[i], 1, MSG_NOSIGNAL) <= 0) {
+          break;
+        }
+      }
+      close(conn_fd);
+    }
+  });
+  const std::string ctx = json{{"fork_server_socket_path", trickle_server.path}}.dump();
+  const auto start_time = std::chrono::steady_clock::now();
+  auto [trickle_proc, trickle_wid] = StartPyWorker(ctx, {}, {}, 124);
+  const int64_t elapsed_ms = ElapsedMs(start_time);
+  trickle_thread.join();
+  EXPECT_NE(trickle_proc.GetId(), 12345);
+  EXPECT_FALSE(trickle_wid.IsNil());
+  EXPECT_EQ(worker_pool_->GetProcessSize(), 1);
+  EXPECT_LT(elapsed_ms, 400);
+}
+#endif
 
 }  // namespace ray::raylet

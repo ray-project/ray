@@ -14,22 +14,39 @@
 
 #include "ray/raylet/worker_pool.h"
 
+#ifdef __linux__
+#include <poll.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/uio.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
+
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
+#include <chrono>
+#include <climits>
+#include <cstring>
 #include <deque>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/random/random.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -41,6 +58,7 @@
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process_utils.h"
+#include "ray/util/subreaper.h"
 
 namespace ray {
 
@@ -95,6 +113,14 @@ bool RemoveWorker(
 bool OptionalsMatchOrEitherEmpty(const std::optional<bool> &ask,
                                  const std::optional<bool> &have) {
   return !ask.has_value() || !have.has_value() || ask.value() == have.value();
+}
+
+bool IsBootPythonWorkerPrestartDisabled() {
+#ifdef __linux__
+  return RayConfig::instance().enable_worker_fork_server();
+#else
+  return false;
+#endif
 }
 
 }  // namespace
@@ -220,7 +246,8 @@ void WorkerPool::Start() {
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
 
-  if (RayConfig::instance().enable_worker_prestart()) {
+  if (RayConfig::instance().enable_worker_prestart() &&
+      !IsBootPythonWorkerPrestartDisabled()) {
     rpc::LeaseSpec rpc_lease_spec;
     rpc_lease_spec.set_language(Language::PYTHON);
     rpc_lease_spec.mutable_runtime_env_info()->set_serialized_runtime_env("{}");
@@ -278,20 +305,29 @@ const ProcessInterface &WorkerPool::AddWorkerProcess(
     SteadyTimePoint start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options,
-    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
-  auto [it, _] = state.worker_processes.emplace(
-      worker_id,
-      WorkerProcessInfo{/*is_pending_registration=*/true,
-                        worker_type,
-                        std::move(proc),
-                        start,
-                        runtime_env_info,
-                        dynamic_options,
-                        worker_startup_keep_alive_duration});
+    std::optional<absl::Duration> worker_startup_keep_alive_duration,
+    bool started_via_fork_server) {
+  auto [it, _] =
+      state.worker_processes.emplace(worker_id,
+                                     WorkerProcessInfo{/*is_pending_registration=*/true,
+                                                       worker_type,
+                                                       std::move(proc),
+                                                       start,
+                                                       runtime_env_info,
+                                                       dynamic_options,
+                                                       worker_startup_keep_alive_duration,
+                                                       started_via_fork_server});
   return *it->second.proc;
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state, const WorkerID &worker_id) {
+#ifdef __linux__
+  auto it = state.worker_processes.find(worker_id);
+  if (it != state.worker_processes.end() && it->second.started_via_fork_server &&
+      it->second.proc && it->second.proc->IsValid()) {
+    KnownChildrenTracker::instance().RemoveKnownChild(it->second.proc->GetId());
+  }
+#endif
   state.worker_processes.erase(worker_id);
 }
 
@@ -558,8 +594,35 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
 
   SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
+  bool attempted_fork_server_socket = false;
   std::unique_ptr<ProcessInterface> proc =
-      StartProcess(worker_command_args, env, worker_id);
+      TryStartProcessViaForkServer(language,
+                                   worker_type,
+                                   worker_command_args,
+                                   env,
+                                   worker_id,
+                                   dynamic_options,
+                                   serialized_runtime_env_context,
+                                   runtime_env_info,
+                                   attempted_fork_server_socket);
+  const bool started_via_fork_server = (proc != nullptr);
+  if (!proc) {
+    if (attempted_fork_server_socket) {
+      // Mint a fresh WorkerID so a late timed-out fork child cannot register with it.
+      worker_id = WorkerID::FromRandom();
+      std::tie(worker_command_args, env) =
+          BuildProcessCommandArgs(language,
+                                  job_config,
+                                  worker_type,
+                                  job_id,
+                                  worker_id,
+                                  dynamic_options,
+                                  runtime_env_hash,
+                                  serialized_runtime_env_context,
+                                  state);
+    }
+    proc = StartProcess(worker_command_args, env, worker_id);
+  }
   worker_pool_metrics_.num_workers_started_sum.Record(1);
   RAY_LOG(INFO).WithField(worker_id)
       << "Started worker process with pid " << proc->GetId();
@@ -575,7 +638,8 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                        start,
                        runtime_env_info,
                        dynamic_options,
-                       worker_startup_keep_alive_duration);
+                       worker_startup_keep_alive_duration,
+                       started_via_fork_server);
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -705,6 +769,367 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
       PopWorkerCallbackAsync(pop_worker_request->callback_, nullptr, status);
     }
   });
+}
+
+std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
+    const Language &language,
+    const rpc::WorkerType worker_type,
+    const std::vector<std::string> &worker_command_args,
+    const ProcessEnvironment &env,
+    const WorkerID &worker_id,
+    const std::vector<std::string> &dynamic_options,
+    const std::string &serialized_runtime_env_context,
+    const rpc::RuntimeEnvInfo &runtime_env_info,
+    bool &attempted_socket) {
+#ifndef __linux__
+  return nullptr;
+#else
+  if (!RayConfig::instance().enable_worker_fork_server() ||
+      language != Language::PYTHON || worker_type != rpc::WorkerType::WORKER ||
+      !dynamic_options.empty()) {
+    return nullptr;
+  }
+
+  auto default_worker_it = std::find_if(
+      worker_command_args.begin(), worker_command_args.end(), [](const std::string &arg) {
+        return arg == "default_worker.py" || absl::EndsWith(arg, "/default_worker.py");
+      });
+  if (default_worker_it == worker_command_args.end()) {
+    return nullptr;
+  }
+  constexpr std::string_view kSetupWorkerFilename = "setup_worker.py";
+  const size_t prefix_len =
+      static_cast<size_t>(default_worker_it - worker_command_args.begin());
+  if (prefix_len < 1 || prefix_len > 2 || worker_command_args[0].empty() ||
+      worker_command_args[0][0] == '-' ||
+      (prefix_len == 2 && worker_command_args[1] != kSetupWorkerFilename &&
+       !absl::EndsWith(worker_command_args[1], "/setup_worker.py"))) {
+    return nullptr;
+  }
+
+  constexpr std::string_view kSerializedCtxPrefix = "--serialized-runtime-env-context=";
+  constexpr std::string_view kLanguagePrefix = "--language=";
+  constexpr std::string_view kTempDirPrefix = "--temp-dir=";
+  constexpr std::string_view kSessionNamePrefix = "--session-name=";
+
+  std::vector<std::string> worker_args;
+  std::string temp_dir;
+  std::string session_name;
+  for (auto it = std::next(default_worker_it); it != worker_command_args.end(); ++it) {
+    const std::string &arg = *it;
+    if (absl::StartsWith(arg, kSerializedCtxPrefix) ||
+        absl::StartsWith(arg, kLanguagePrefix)) {
+      continue;
+    }
+    if (!absl::StartsWith(arg, "--")) {
+      return nullptr;
+    }
+    if (absl::StartsWith(arg, kTempDirPrefix)) {
+      temp_dir = arg.substr(kTempDirPrefix.size());
+    } else if (absl::StartsWith(arg, kSessionNamePrefix)) {
+      session_name = arg.substr(kSessionNamePrefix.size());
+    }
+    worker_args.push_back(arg);
+  }
+
+  ProcessEnvironment runtime_env_vars;
+  std::string fork_server_socket_path;
+  if (!serialized_runtime_env_context.empty() && serialized_runtime_env_context != "{}") {
+    const nlohmann::json ctx_json =
+        nlohmann::json::parse(serialized_runtime_env_context, nullptr, false);
+    if (ctx_json.is_object()) {
+      if (ctx_json.contains("fork_server_socket_path") &&
+          ctx_json["fork_server_socket_path"].is_string()) {
+        fork_server_socket_path = ctx_json["fork_server_socket_path"].get<std::string>();
+      }
+      if (ctx_json.contains("env_vars") && ctx_json["env_vars"].is_object()) {
+        for (const auto &[key, value] : ctx_json["env_vars"].items()) {
+          if (value.is_string()) {
+            runtime_env_vars[key] = value.get<std::string>();
+          }
+        }
+      }
+    }
+  } else if (IsRuntimeEnvEmpty(runtime_env_info.serialized_runtime_env()) &&
+             !temp_dir.empty() && !session_name.empty()) {
+    while (temp_dir.size() > 1 && temp_dir.back() == '/') {
+      temp_dir.pop_back();
+    }
+    fork_server_socket_path = absl::StrCat(
+        temp_dir, "/", session_name, "/sockets/fs_", node_id_.Hex().substr(0, 8), "_0");
+  }
+
+  if (fork_server_socket_path.empty()) {
+    return nullptr;
+  }
+
+  struct sockaddr_un addr = {};
+  addr.sun_family = AF_UNIX;
+  if (fork_server_socket_path.size() >= sizeof(addr.sun_path)) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Fork server socket path exceeds sun_path limit: " << fork_server_socket_path
+        << "; falling back to execvpe.";
+    return nullptr;
+  }
+
+  struct stat sock_st = {};
+  const bool has_live_sock =
+      stat(fork_server_socket_path.c_str(), &sock_st) == 0 && S_ISSOCK(sock_st.st_mode);
+  if (!has_live_sock) {
+    unhealthy_fork_server_sockets_.erase(fork_server_socket_path);
+    return nullptr;
+  }
+  const uint64_t cur_dev = static_cast<uint64_t>(sock_st.st_dev);
+  const uint64_t cur_ino = static_cast<uint64_t>(sock_st.st_ino);
+
+  constexpr int64_t kUnhealthySocketCooldownMs = 5000;
+  const int64_t now_steady_ms = clock_.SteadyNowMillis();
+  auto unhealthy_it = unhealthy_fork_server_sockets_.find(fork_server_socket_path);
+  if (unhealthy_it != unhealthy_fork_server_sockets_.end()) {
+    if (unhealthy_it->second.st_dev != cur_dev ||
+        unhealthy_it->second.st_ino != cur_ino) {
+      unhealthy_fork_server_sockets_.erase(unhealthy_it);
+    } else if (now_steady_ms < unhealthy_it->second.until_ms) {
+      return nullptr;
+    } else {
+      unhealthy_fork_server_sockets_.erase(unhealthy_it);
+    }
+  }
+
+  // Serialize strictly as UTF-8 and enforce the 4 MiB server line cap before connecting
+  // so invalid or oversized requests fall back to execvpe without poisoning cooldown.
+  constexpr size_t kMaxForkRequestBytes = 4 * 1024 * 1024;
+  std::string payload;
+  try {
+    nlohmann::json request = {
+        {"args", worker_args}, {"env", env}, {"runtime_env_vars", runtime_env_vars}};
+    payload = request.dump();
+    payload.push_back('\n');
+  } catch (const nlohmann::json::type_error &e) {
+    RAY_LOG(WARNING).WithField(worker_id) << "Fork request contains non-UTF-8 data ("
+                                          << e.what() << "); falling back to execvpe.";
+    return nullptr;
+  }
+  if (payload.size() > kMaxForkRequestBytes) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Fork request size (" << payload.size() << " bytes) exceeds "
+        << kMaxForkRequestBytes << "-byte limit; falling back to execvpe.";
+    return nullptr;
+  }
+
+  auto record_failure_and_fallback = [&]() -> std::unique_ptr<ProcessInterface> {
+    const int64_t fail_ms = clock_.SteadyNowMillis();
+    constexpr size_t kMaxTrackedUnhealthySockets = 64;
+    if (unhealthy_fork_server_sockets_.size() >= kMaxTrackedUnhealthySockets &&
+        !unhealthy_fork_server_sockets_.contains(fork_server_socket_path)) {
+      unhealthy_fork_server_sockets_.clear();
+    }
+    // Key by pre-connect inode so a newly replaced socket isn't poisoned.
+    unhealthy_fork_server_sockets_[fork_server_socket_path] =
+        UnhealthyForkServerSocket{fail_ms + kUnhealthySocketCooldownMs, cur_dev, cur_ino};
+    return nullptr;
+  };
+
+  std::memcpy(
+      addr.sun_path, fork_server_socket_path.data(), fork_server_socket_path.size());
+
+  struct ScopedFd {
+    explicit ScopedFd(int raw_fd = -1) : fd(raw_fd) {}
+    ScopedFd(const ScopedFd &) = delete;
+    ScopedFd &operator=(const ScopedFd &) = delete;
+    ~ScopedFd() {
+      if (fd >= 0) {
+        close(fd);
+      }
+    }
+    int Release() {
+      int released = fd;
+      fd = -1;
+      return released;
+    }
+    int fd = -1;
+  };
+
+  int raw_sock_fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+  if (raw_sock_fd < 0) {
+    return nullptr;
+  }
+  ScopedFd sock_guard(raw_sock_fd);
+  const int sock_fd = sock_guard.fd;
+
+  // Single monotonic deadline across connect(), send(), and recvmsg().
+  const int64_t timeout_ms =
+      std::max<int64_t>(1, RayConfig::instance().worker_fork_server_timeout_ms());
+  const std::chrono::steady_clock::time_point deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  auto wait_fd = [&](short events, int &out_errno) -> bool {
+    while (true) {
+      const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+      if (now >= deadline) {
+        out_errno = ETIMEDOUT;
+        return false;
+      }
+      const int64_t remaining_ms =
+          std::chrono::ceil<std::chrono::milliseconds>(deadline - now).count();
+      struct pollfd pfd = {sock_fd, events, 0};
+      const int poll_result =
+          poll(&pfd, 1, static_cast<int>(std::min<int64_t>(remaining_ms, INT_MAX)));
+      if (poll_result < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        out_errno = errno;
+        return false;
+      }
+      if (poll_result == 0) {
+        out_errno = ETIMEDOUT;
+        return false;
+      }
+      return true;
+    }
+  };
+
+  attempted_socket = true;
+
+  if (connect(sock_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == -1) {
+    int connect_errno = errno;
+    if (connect_errno == EINPROGRESS || connect_errno == EINTR) {
+      if (wait_fd(POLLOUT, connect_errno)) {
+        int so_error = 0;
+        socklen_t so_len = sizeof(so_error);
+        connect_errno =
+            getsockopt(sock_fd, SOL_SOCKET, SO_ERROR, &so_error, &so_len) == -1
+                ? errno
+                : so_error;
+      }
+    }
+    if (connect_errno != 0) {
+      RAY_LOG(WARNING).WithField(worker_id)
+          << "Failed to connect to fork server at " << fork_server_socket_path << ": "
+          << strerror(connect_errno) << "; falling back to execvpe.";
+      return record_failure_and_fallback();
+    }
+  }
+
+  size_t total_sent = 0;
+  while (total_sent < payload.size()) {
+    ssize_t sent = send(
+        sock_fd, payload.data() + total_sent, payload.size() - total_sent, MSG_NOSIGNAL);
+    if (sent < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      int write_errno = errno;
+      if (write_errno == EAGAIN || write_errno == EWOULDBLOCK) {
+        if (wait_fd(POLLOUT, write_errno)) {
+          continue;
+        }
+      }
+      RAY_LOG(WARNING).WithField(worker_id)
+          << "Failed to send fork request to " << fork_server_socket_path << ": "
+          << strerror(write_errno) << "; falling back to execvpe.";
+      return record_failure_and_fallback();
+    }
+    total_sent += static_cast<size_t>(sent);
+  }
+
+  std::string response;
+  ScopedFd lifetime_fd_guard;
+  bool io_timed_out = false;
+  while (response.find('\n') == std::string::npos && response.size() < 4096) {
+    char buf[256];
+    struct iovec iov = {buf, sizeof(buf)};
+    alignas(struct cmsghdr) char cmsg_buf[CMSG_SPACE(sizeof(int) * 4)] = {};
+    struct msghdr msg = {};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = cmsg_buf;
+    msg.msg_controllen = sizeof(cmsg_buf);
+    ssize_t bytes_read = recvmsg(sock_fd, &msg, MSG_CMSG_CLOEXEC);
+    if (bytes_read < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        int poll_errno = 0;
+        if (wait_fd(POLLIN, poll_errno)) {
+          continue;
+        }
+        if (poll_errno == ETIMEDOUT) {
+          io_timed_out = true;
+        }
+      }
+      break;
+    }
+    if (bytes_read == 0) {
+      break;
+    }
+    const auto *cmsg_buf_end =
+        static_cast<const unsigned char *>(msg.msg_control) + msg.msg_controllen;
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr;
+         cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+      if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS &&
+          cmsg->cmsg_len >= CMSG_LEN(sizeof(int))) {
+        const auto *data_begin = CMSG_DATA(cmsg);
+        const auto *safe_end = std::min(
+            reinterpret_cast<const unsigned char *>(cmsg) + cmsg->cmsg_len, cmsg_buf_end);
+        const size_t num_fds =
+            safe_end > data_begin
+                ? static_cast<size_t>(safe_end - data_begin) / sizeof(int)
+                : 0;
+        for (size_t i = 0; i < num_fds; ++i) {
+          int fd = -1;
+          std::memcpy(&fd, data_begin + i * sizeof(int), sizeof(int));
+          if (fd < 0) {
+            continue;
+          }
+          if (lifetime_fd_guard.fd == -1 && !(msg.msg_flags & MSG_CTRUNC)) {
+            lifetime_fd_guard.fd = fd;
+          } else {
+            close(fd);
+          }
+        }
+      }
+    }
+    response.append(buf, static_cast<size_t>(bytes_read));
+  }
+
+  const size_t newline_pos = response.find('\n');
+  pid_t forked_pid = -1;
+  if (newline_pos != std::string::npos) {
+    const nlohmann::json resp_json = nlohmann::json::parse(
+        response.data(), response.data() + newline_pos, nullptr, false);
+    if (resp_json.is_object() && resp_json.contains("pid") &&
+        resp_json["pid"].is_number_integer()) {
+      const int64_t raw_pid = resp_json["pid"].get<int64_t>();
+      if (raw_pid > 0 && raw_pid <= std::numeric_limits<pid_t>::max()) {
+        forked_pid = static_cast<pid_t>(raw_pid);
+      }
+    }
+  }
+  if (forked_pid <= 0 || lifetime_fd_guard.fd < 0) {
+    constexpr size_t kMaxLoggedResponseLen = 256;
+    const std::string response_summary =
+        response.empty() ? (io_timed_out ? "(timed out)" : "(empty)")
+                         : (response.size() > kMaxLoggedResponseLen
+                                ? absl::StrCat(std::string_view(response).substr(
+                                                   0, kMaxLoggedResponseLen),
+                                               "...(truncated)")
+                                : response);
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Invalid or timed-out response from fork server at " << fork_server_socket_path
+        << ": " << response_summary << "; falling back to execvpe.";
+    return record_failure_and_fallback();
+  }
+
+  unhealthy_fork_server_sockets_.erase(fork_server_socket_path);
+  // Forked workers inherit the fork server's cgroup directly; register the PID so
+  // subreaper cleanup doesn't kill them if the fork server exits.
+  KnownChildrenTracker::instance().AddKnownChild(
+      [forked_pid]() -> pid_t { return forked_pid; });
+
+  return std::make_unique<Process>(forked_pid, lifetime_fd_guard.Release());
+#endif
 }
 
 std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
@@ -875,7 +1300,23 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
 
-  std::unique_ptr<ProcessInterface> process = std::make_unique<Process>(pid);
+  auto &starting_process_info = it->second;
+  std::unique_ptr<ProcessInterface> process;
+#if !defined(_WIN32)
+  if (starting_process_info.started_via_fork_server) {
+    if (const auto *started_proc =
+            dynamic_cast<const Process *>(starting_process_info.proc.get());
+        started_proc != nullptr && started_proc->GetId() == pid) {
+      int dup_fd = started_proc->DupLifetimeFd();
+      if (dup_fd >= 0) {
+        process = std::make_unique<Process>(pid, dup_fd);
+      }
+    }
+  }
+#endif
+  if (!process) {
+    process = std::make_unique<Process>(pid);
+  }
   worker->SetProcess(std::move(process));
 #if !defined(_WIN32)
   if (RayConfig::instance().process_group_cleanup_enabled()) {
@@ -908,7 +1349,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  auto &starting_process_info = it->second;
   int64_t duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                             clock_.SteadyNow() - starting_process_info.start_time)
                             .count();
@@ -963,8 +1403,9 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
 }
 
 void WorkerPool::ExecuteOnPrestartWorkersStarted(std::function<void()> callback) {
-  bool prestart = RayConfig::instance().prestart_worker_first_driver() ||
-                  RayConfig::instance().enable_worker_prestart();
+  bool prestart = !IsBootPythonWorkerPrestartDisabled() &&
+                  (RayConfig::instance().prestart_worker_first_driver() ||
+                   RayConfig::instance().enable_worker_prestart());
   if (first_job_registered_ ||
       first_job_registered_python_worker_count_ >=  // Don't wait if prestart is completed
           first_job_driver_wait_num_python_workers_ ||
@@ -1003,7 +1444,8 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
   if (driver->GetLanguage() == Language::JAVA) {
     send_reply_callback(Status::OK(), port);
   } else {
-    if (!first_job_registered_ && RayConfig::instance().prestart_worker_first_driver() &&
+    if (!first_job_registered_ && !IsBootPythonWorkerPrestartDisabled() &&
+        RayConfig::instance().prestart_worker_first_driver() &&
         !RayConfig::instance().enable_worker_prestart()) {
       RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_prestart_python_workers;
       rpc::LeaseSpec rpc_lease_spec;
@@ -1633,7 +2075,7 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                            << setup_error_message;
             return;
           }
-          PopWorkerStatus status;
+          PopWorkerStatus status = PopWorkerStatus::OK;
           StartWorkerProcess(lease_spec.GetLanguage(),
                              rpc::WorkerType::WORKER,
                              lease_spec.JobId(),
@@ -1642,6 +2084,9 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                              lease_spec.GetRuntimeEnvHash(),
                              serialized_runtime_env_context,
                              lease_spec.RuntimeEnvInfo());
+          if (status != PopWorkerStatus::OK) {
+            DeleteRuntimeEnvIfPossible(lease_spec.SerializedRuntimeEnv());
+          }
         });
   }
 }
