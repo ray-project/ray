@@ -293,6 +293,29 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   const WorkerID &GetWorkerID() const;
 
+  /**
+   * @brief Check whether the worker can retain an unreaped Jobs helper.
+   * @return Whether the worker supports Jobs process-group cleanup.
+   */
+  bool SupportsJobProcessGroupCleanup() const;
+
+  /**
+   * @brief Register the Jobs helper before it starts the entrypoint.
+   * The caller must keep the helper unreaped until CleanupJobProcessGroup succeeds.
+   * @param pid PID of a direct child that leads its own process group.
+   * @return OK on registration, or an error if the helper is invalid or registration
+   * is unavailable.
+   */
+  Status RegisterJobProcessGroup(int64_t pid);
+
+  /**
+   * @brief Close registration and signal the owned Jobs group during shutdown.
+   * Safe to call concurrently with registration and to retry after an error.
+   * @return OK if the signal was sent or there is no group to signal. The caller
+   * must still reap the helper. On error, the group remains registered.
+   */
+  Status CleanupJobProcessGroup();
+
   WorkerType GetWorkerType() const { return options_.worker_type; }
 
   Language GetLanguage() const { return options_.language; }
@@ -2229,6 +2252,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Implements a thread-safe, single state machine that coordinates
   /// all shutdown entry points.
   std::unique_ptr<ShutdownCoordinator> shutdown_coordinator_;
+
+  absl::Mutex job_process_group_mutex_;
+  std::optional<int64_t> job_process_group_ ABSL_GUARDED_BY(job_process_group_mutex_);
+  bool job_process_cleanup_started_ ABSL_GUARDED_BY(job_process_group_mutex_) = false;
 
   int64_t max_direct_call_object_size_;
 

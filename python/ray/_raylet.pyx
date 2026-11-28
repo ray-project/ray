@@ -3515,6 +3515,15 @@ cdef class CoreWorker:
         return CCoreWorkerProcess.GetCoreWorker(
             ).ShouldCaptureChildTasksInPlacementGroup()
 
+    def supports_job_process_group_cleanup(self):
+        return CCoreWorkerProcess.GetCoreWorker().SupportsJobProcessGroupCleanup()
+
+    def register_job_process_group(self, int64_t pid):
+        check_status(CCoreWorkerProcess.GetCoreWorker().RegisterJobProcessGroup(pid))
+
+    def cleanup_job_process_group(self):
+        check_status(CCoreWorkerProcess.GetCoreWorker().CleanupJobProcessGroup())
+
     def update_task_is_debugger_paused(self, TaskID task_id, is_debugger_paused):
         cdef:
             CTaskID c_task_id = task_id.native()
