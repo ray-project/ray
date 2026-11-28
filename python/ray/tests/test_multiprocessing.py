@@ -339,6 +339,83 @@ def callback_test_helper(args):
     return index
 
 
+def return_or_raise_helper(args):
+    """Return an exception instance for "return", raise one for "raise".
+
+    Module level so that Python's multiprocessing library can pickle it.
+    """
+    index, action = args
+    if action == "return":
+        return ValueError(f"returned {index}")
+    if action == "raise":
+        raise ValueError(f"raised {index}")
+    return index
+
+
+def test_returned_exception_is_a_result(
+    pool_4_processes, pool_4_processes_python_multiprocessing_lib
+):
+    # A function may return an Exception instance as a regular value. Like
+    # multiprocessing.Pool, this must not be treated as a task failure.
+    args = [(0, None), (1, "return"), (2, None)]
+    for pool in [pool_4_processes, pool_4_processes_python_multiprocessing_lib]:
+        results = pool.map(return_or_raise_helper, args)
+        assert [type(r) for r in results] == [int, ValueError, int]
+        assert str(results[1]) == "returned 1"
+
+        result = pool.apply(return_or_raise_helper, ((3, "return"),))
+        assert isinstance(result, ValueError)
+        assert str(result) == "returned 3"
+
+        callback_results, error_callback_results = [], []
+        async_result = pool.map_async(
+            return_or_raise_helper,
+            args,
+            callback=callback_results.append,
+            error_callback=error_callback_results.append,
+        )
+        async_result.wait(timeout=30)
+        assert async_result.ready()
+        assert async_result.successful()
+        assert error_callback_results == []
+        assert len(callback_results) == 1
+        assert sorted(map(str, callback_results[0])) == ["0", "2", "returned 1"]
+
+
+@pytest.mark.parametrize("method", ["apply_async", "map_async", "starmap_async"])
+def test_error_callback_receives_task_exception(
+    pool_4_processes, pool_4_processes_python_multiprocessing_lib, method
+):
+    # The error callback gets the exception raised by the task, as documented
+    # and as in multiprocessing.Pool, not an internal wrapper.
+    for pool in [pool_4_processes, pool_4_processes_python_multiprocessing_lib]:
+        errors = []
+        if method == "apply_async":
+            async_result = pool.apply_async(
+                return_or_raise_helper, ((5, "raise"),), error_callback=errors.append
+            )
+        elif method == "map_async":
+            async_result = pool.map_async(
+                return_or_raise_helper,
+                [(4, None), (5, "raise")],
+                error_callback=errors.append,
+            )
+        else:
+            async_result = pool.starmap_async(
+                return_or_raise_helper,
+                [((4, None),), ((5, "raise"),)],
+                error_callback=errors.append,
+            )
+        async_result.wait(timeout=30)
+        assert async_result.ready()
+        assert not async_result.successful()
+        assert len(errors) == 1
+        assert type(errors[0]) is ValueError
+        assert str(errors[0]) == "raised 5"
+        with pytest.raises(ValueError, match="raised 5"):
+            async_result.get()
+
+
 @pytest.mark.parametrize("use_iter", [True, False])
 def test_imap(pool_4_processes, use_iter):
     def f(args):
