@@ -3066,9 +3066,7 @@ textual==4.0.0; sys_platform != "win32" \
 tomli==2.0.2; python_full_version < "3.11" \
     --hash=sha256:2ebe24485c53d303f690b0ec092806a085f07af5a5aa1464f3931eec36caaa38 \
     --hash=sha256:d46d457a85337051c36524bc5349dd91b1877838e2979ac5ced3e710ed8a60ed
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   pytest
+# via pytest
 toolz==1.1.0 \
     --hash=sha256:15ccc861ac51c53696de0a5d6d4607f99c210739caf987b5d2054f3efed429d8 \
     --hash=sha256:27a5c770d068c110d9ed9323f24f1543e83b2f300a687b7891c1a6d56b697b5b
@@ -3128,9 +3126,9 @@ uc-micro-py==2.0.0; sys_platform != "win32" \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   linkify-it-py
-urllib3==1.26.20 \
-    --hash=sha256:0ed14ccfbf1c30a9072c7ca157e4319b70d65f623e91e7b32fadb2853431016e \
-    --hash=sha256:40c2dc0c681e47eb8f90e7e27bf6ff7df2e677421fd46756da1161c39ca70d32
+urllib3==2.8.0 \
+    --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3 \
+    --hash=sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   requests
