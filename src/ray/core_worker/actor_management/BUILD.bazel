@@ -29,13 +29,17 @@ ray_cc_library(
     name = "actor_handle",
     srcs = ["actor_handle.cc"],
     hdrs = ["actor_handle.h"],
-    visibility = ["//src/ray/core_worker:__pkg__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/core_worker:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
         "//src/ray/core_worker:core_worker_context",
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:logging",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_prod",
     ],
