@@ -138,6 +138,11 @@ def make_report(*vulns: dict, packages: int = 1, os_packages: int = 1) -> dict:
     }
 
 
+def ref_image(name: str) -> Image:
+    """An image local_scan_images scanned by name: no Ray variant."""
+    return Image(name, "image", "", "", "x86_64")
+
+
 def make_image(
     image_type: str = "ray",
     python_version: str = "3.12",
@@ -595,6 +600,18 @@ ALL_PY = ["3.11", "3.12", "3.13", "3.14"]
             [],
             "ray py3.12 · cu12.8.1-cudnn · x86_64; ray-llm py3.12 · cu12.8.0 · x86_64",
             id="labels-collide-across-image-types",
+        ),
+        pytest.param(
+            [ref_image("ubuntu:22.04"), ref_image("alpine:3.20")],
+            [],
+            "alpine:3.20; ubuntu:22.04",
+            id="images-with-no-ray-variant-go-by-name",
+        ),
+        pytest.param(
+            [make_image(), ref_image("ubuntu:22.04")],
+            [],
+            "ray py3.12 · cpu · x86_64; ubuntu:22.04",
+            id="ray-and-other-images",
         ),
     ],
 )
@@ -1211,6 +1228,32 @@ def test_an_image_without_a_digest_gets_an_empty_digest_cell():
     for heading in ("Fixable Images", "No Fix Yet Per Image", "Per Image"):
         (row,) = table_rows(section(report, heading))
         assert row.startswith("| `ray-py3.12-cpu` |  | ")
+
+
+def test_load_scan_can_keep_an_image_with_no_os_packages(tmp_path: Path):
+    """local_scan_images scans any image, e.g. one built FROM scratch."""
+    report = {
+        "SchemaVersion": 2,
+        "Results": [
+            {
+                "Target": "app",
+                "Class": "lang-pkgs",
+                "Packages": [{"Name": "lib"}],
+                "Vulnerabilities": [
+                    {"VulnerabilityID": "CVE-2026-0001", "Severity": "HIGH"}
+                ],
+            }
+        ],
+    }
+    image = Image("app", "image", "", "", "x86_64")
+    (tmp_path / "app.json.gz").write_bytes(gzip.compress(json.dumps(report).encode()))
+    record = {"status": "scanned"}
+    strict = trivy_report.load_scan(tmp_path, image, record)
+    assert strict.error == "no OS packages detected (OS: not detected)"
+    assert not strict.scanned
+    kept = trivy_report.load_scan(tmp_path, image, record, require_os_packages=False)
+    assert kept.scanned
+    assert [f.vuln_id for f in kept.findings] == ["CVE-2026-0001"]
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import signal
 import subprocess
 import sys
 import tarfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -17,6 +17,11 @@ from click.testing import CliRunner
 from ci.ray_ci.automation import push_ray_image
 from ci.ray_ci.automation.trivy import registry, scan_images
 from ci.ray_ci.automation.trivy.fake_s3 import FakeS3
+from ci.ray_ci.automation.trivy.fake_tools import (
+    FIXTURE,
+    FakeDocker,
+    faked_scan_tools,
+)
 from ci.ray_ci.automation.trivy.scan_images import (
     ContainedTrivy,
     ScanError,
@@ -29,7 +34,6 @@ from ci.ray_ci.automation.trivy.scan_store import BUCKET, ScanStore
 from ci.ray_ci.automation.trivy.trivy_db import DB_SOURCES, TrivyDbError
 from ci.ray_ci.automation.trivy.trivy_report import EXIT_INCOMPLETE, load_scans
 
-FIXTURE = Path(__file__).parent / "testdata" / "ray-py3.12-cpu.json"
 WORK_REPO = "123.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp"
 OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 OCI_INDEX = "application/vnd.oci.image.index.v1+json"
@@ -257,35 +261,6 @@ def test_docker_run_args_keep_trivy_contained():
     assert not any("AWS" in a or ".docker" in a or a.startswith("/home") for a in args)
 
 
-class FakeDocker:
-    """Stands in for _run: records docker commands, fakes Trivy's output."""
-
-    def __init__(self, fail_scan_of: Optional[str] = None) -> None:
-        self.calls: list[list[str]] = []
-        self.fail_scan_of = fail_scan_of
-
-    def __call__(self, args, check=True, timeout=None):
-        args = list(args)
-        self.calls.append(args)
-        if args[:2] == ["docker", "run"] and self.fail_scan_of:
-            if f"/work/out/{self.fail_scan_of}.json" in args:
-                raise ScanError("trivy exited 1")
-        if args[:2] == ["docker", "cp"] and ":/work/out/" in args[2]:
-            Path(args[3]).write_bytes(FIXTURE.read_bytes())
-        return ""
-
-    def commands(self) -> list[str]:
-        return [" ".join(c[:3]) for c in self.calls]
-
-
-def fake_pull(refs, layout, platform):
-    layout.mkdir()
-    digests = [ref.rsplit("@", 1)[1] for ref in refs]
-    (layout / "index.json").write_text(
-        json.dumps({"manifests": [{"digest": d} for d in digests]})
-    )
-
-
 def run_group(
     tmp_path: Path, group: list, docker: FakeDocker, manifests: dict, report=None
 ):
@@ -304,23 +279,7 @@ def run_group(
         tag = tags_by_digest[ref.rsplit("@", 1)[1]]
         return {"mediaType": manifests.get(tag, OCI_MANIFEST)}
 
-    def fake_stage(workdir, layout, dbs, image_types):
-        (workdir / "staging").mkdir()
-        return workdir / "staging"
-
-    with mock.patch.multiple(
-        scan_images.registry,
-        manifest=manifest,
-        config=mock.Mock(return_value={"architecture": "amd64"}),
-        digest=digest,
-        pull=fake_pull,
-    ), mock.patch.object(scan_images, "_run", docker), mock.patch.object(
-        scan_images, "load_db_pins", return_value={}
-    ), mock.patch.object(
-        scan_images, "fetch_db", side_effect=lambda s, *_: (tmp_path, {"blob": s.name})
-    ), mock.patch.object(
-        scan_images, "stage", fake_stage
-    ):
+    with faked_scan_tools(tmp_path, docker, digest, manifest):
         scan_group(
             group,
             "x86_64",
@@ -475,6 +434,35 @@ def test_stage_needs_an_ignore_file_for_every_image_type(tmp_path: Path):
     assert (staging / "work" / "cache" / "db").readlink() == Path("/data/db")
     assert (staging / "work" / "cache" / "java-db").readlink() == Path("/data/java-db")
     assert oct((staging / "work" / "out").stat().st_mode & 0o7777) == "0o1777"
+
+
+def test_stage_takes_a_given_ignore_file_for_an_image_type(tmp_path: Path):
+    """local_scan_images passes the user's ignore file instead of a built-in one."""
+    files = tmp_path / "runfiles"
+    files.mkdir()
+    (files / "trivy").write_bytes(b"\x7fELF")
+    mine = tmp_path / "mine.yaml"
+    mine.write_text("vulnerabilities:\n  - id: CVE-2026-0001\n")
+    rlocation = mock.Mock()
+    rlocation.Rlocation = lambda p: str(files / Path(p).name)
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    with mock.patch.object(
+        scan_images.registry.runfiles, "Create", return_value=rlocation
+    ):
+        staging = scan_images.stage(
+            tmp_path / "w", layout, {}, {"image"}, {"image": mine}
+        )
+        with pytest.raises(ScanError, match="no ignore file for image"):
+            scan_images.stage(
+                tmp_path / "v",
+                tmp_path / "layout2",
+                {},
+                {"image"},
+                {"image": tmp_path / "gone.yaml"},
+            )
+    copied = staging / "data" / "ignore" / "image.trivyignore.yaml"
+    assert copied.read_text() == mine.read_text()
 
 
 def mode(path: Path) -> str:
@@ -972,7 +960,18 @@ def test_cleanup_removes_named_scan_containers(tmp_path: Path):
     assert set(names) <= set(rm)
 
 
-def test_stale_leftovers_from_earlier_jobs_are_removed(caplog):
+@pytest.mark.parametrize(
+    ("stale_after", "expected"),
+    [
+        (scan_images.STALE_AFTER, ["trivy-scan-old-loader", "trivy-scan-old-data"]),
+        # local_scan_images': a local run may go on for hours.
+        (timedelta(days=1), []),
+    ],
+    ids=["ci", "local"],
+)
+def test_stale_leftovers_from_earlier_jobs_are_removed(
+    caplog, stale_after: timedelta, expected: list
+):
     now = datetime(2026, 11, 12, 12, 0, 0)
     listings = {
         ("docker", "ps"): "trivy-scan-old-loader\ntrivy-scan-new-loader\n",
@@ -1004,9 +1003,9 @@ def test_stale_leftovers_from_earlier_jobs_are_removed(caplog):
         return ""
 
     with mock.patch.object(scan_images, "_run", run):
-        scan_images._prune_stale(now)
+        scan_images._prune_stale(now, stale_after)
     removed = [c[-1] for c in calls if "rm" in c]
-    assert removed == ["trivy-scan-old-loader", "trivy-scan-old-data"]
+    assert removed == expected
     assert "Can't tell when volume trivy-scan-odd-data was created" in caplog.text
     assert all(
         "label=ray-trivy-scan=1" in " ".join(c) for c in calls if "ls" in c or "ps" in c
@@ -1204,6 +1203,16 @@ def test_a_build_without_staged_dbs_records_why(tmp_path: Path):
     assert record["status"] == "error"
     assert record["error"].startswith("group failed before scanning: download of s3://")
     assert "/db/metadata.json failed" in record["error"]
+
+
+def test_contained_trivy_prunes_with_its_own_stale_after():
+    seen = []
+    with mock.patch.object(
+        scan_images, "_prune_stale", lambda stale_after: seen.append(stale_after)
+    ), mock.patch.object(scan_images, "_run", FakeDocker()):
+        with ContainedTrivy("base", stale_after=timedelta(days=1)):
+            pass
+    assert seen == [timedelta(days=1)]
 
 
 if __name__ == "__main__":

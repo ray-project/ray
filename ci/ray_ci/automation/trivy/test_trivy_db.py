@@ -11,7 +11,12 @@ from click.testing import CliRunner
 
 from ci.ray_ci.automation.trivy import registry, trivy_db
 from ci.ray_ci.automation.trivy.fake_s3 import FakeS3
-from ci.ray_ci.automation.trivy.scan_store import BUCKET, ScanStore
+from ci.ray_ci.automation.trivy.scan_store import (
+    BUCKET,
+    DB_FOLDER,
+    LocalStore,
+    ScanStore,
+)
 from ci.ray_ci.automation.trivy.trivy_db import (
     DB_SOURCES,
     TrivyDbError,
@@ -180,6 +185,31 @@ def test_a_retried_job_keeps_the_builds_db_snapshot(tmp_path: Path):
     assert result.exit_code == 0, result.output
     assert out.read_bytes() == first
     assert uploads == []
+
+
+def test_stage_snapshot_stages_into_a_local_store_too(tmp_path: Path):
+    """local_scan_images stages the same DBs into a local folder."""
+    store = LocalStore(tmp_path / "work")
+    staged = []
+
+    def stage(source, target_store, workdir):
+        # metadata.json comes last, once every DB is in place.
+        staged.append((source.name, target_store.exists(DB_FOLDER, "metadata.json")))
+        return {"blob": source.name}
+
+    (tmp_path / "w").mkdir()
+    with mock.patch.object(trivy_db, "stage_db", stage), mock.patch.object(
+        trivy_db, "load_trivy_pin", return_value={"version": "0.76.1"}
+    ):
+        local_copy = trivy_db.stage_snapshot(store, tmp_path / "w")
+    assert staged == [("db", False), ("java_db", False)]
+    expected = {
+        "trivy": {"version": "0.76.1"},
+        "db": {"blob": "db"},
+        "java_db": {"blob": "java_db"},
+    }
+    assert json.loads(store.path(DB_FOLDER, "metadata.json").read_text()) == expected
+    assert json.loads(local_copy.read_text()) == expected
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 import click
 
@@ -54,6 +54,7 @@ from ci.ray_ci.automation.trivy.scan_store import (
     DB_FOLDER,
     RESULTS_FOLDER,
     ScanStore,
+    Store,
     StoreError,
 )
 from ci.ray_ci.automation.trivy.trivy_db import (
@@ -105,6 +106,7 @@ OCI_ARCH = {"x86_64": "amd64", "aarch64": "arm64"}
 # can't know for sure: it may run after midnight. The digest identifies the
 # image; these tags are left out of status records.
 DATED_TAG = re.compile(r"^nightly\.\d{6}\.")
+GROUP_FAILED = "group failed before scanning"
 DB_FILES = {
     "db": {"trivy.db", "metadata.json"},
     "java_db": {"trivy-java.db", "metadata.json"},
@@ -282,7 +284,7 @@ def _safe_extract(tarball: Path, dest: Path, allowed: set[str]) -> None:
         raise ScanError(f"{tarball.name} lacks {sorted(missing)}")
 
 
-def load_db_pins(store: ScanStore, workdir: Path) -> dict[str, Any]:
+def load_db_pins(store: Store, workdir: Path) -> dict[str, Any]:
     """The DB pins trivy_db recorded for this build."""
     path = store.download(DB_FOLDER, DB_METADATA, workdir / DB_METADATA)
     try:
@@ -295,7 +297,7 @@ def load_db_pins(store: ScanStore, workdir: Path) -> dict[str, Any]:
 
 
 def fetch_db(
-    source: DbSource, store: ScanStore, pins: dict[str, Any], workdir: Path
+    source: DbSource, store: Store, pins: dict[str, Any], workdir: Path
 ) -> tuple[Path, dict[str, Any]]:
     """Download this build's copy of a DB and verify it against its pin, and
     the pin against the upstream manifest it names: anyone who can write the
@@ -400,8 +402,9 @@ class ContainedTrivy:
     cache, its temp dir and the results. Nothing else is visible to Trivy.
     """
 
-    def __init__(self, base_image: str) -> None:
+    def __init__(self, base_image: str, stale_after: timedelta = STALE_AFTER) -> None:
         self.base_image = base_image
+        self.stale_after = stale_after
         self.prefix = f"trivy-scan-{uuid.uuid4().hex[:12]}"
         self.data = f"{self.prefix}-data"
         self.work = f"{self.prefix}-work"
@@ -409,7 +412,7 @@ class ContainedTrivy:
         self.scans: list[str] = []
 
     def __enter__(self) -> "ContainedTrivy":
-        _prune_stale()
+        _prune_stale(stale_after=self.stale_after)
         try:
             _run(["docker", "volume", "create", "--label", LABEL, self.data])
             _run(["docker", "volume", "create", "--label", LABEL, self.work])
@@ -515,9 +518,12 @@ def _created(kind: str, name: str) -> Optional[datetime]:
     return created.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def _prune_stale(now: Optional[datetime] = None) -> None:
+def _prune_stale(
+    now: Optional[datetime] = None, stale_after: timedelta = STALE_AFTER
+) -> None:
     """Remove containers and volumes that earlier jobs left behind, e.g.
-    after being killed. Containers go first, so their volumes are free."""
+    after being killed. Containers go first, so their volumes are free.
+    Anything younger than ``stale_after`` may belong to a run still going."""
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     for kind, listing, remove in (
         ("container", ["docker", "ps", "-a"], ["docker", "rm", "-f"]),
@@ -537,7 +543,7 @@ def _prune_stale(now: Optional[datetime] = None) -> None:
             created = _created(kind, name)
             if created is None:
                 logger.warning(f"Can't tell when {kind} {name} was created; left")
-            elif now - created > STALE_AFTER:
+            elif now - created > stale_after:
                 logger.info(f"Removing stale {kind} {name} (created {created})")
                 _run([*remove, name], check=False)
 
@@ -559,20 +565,30 @@ def _make_world_readable(root: Path) -> None:
 
 
 def stage(
-    workdir: Path, layout: Path, dbs: dict[str, Path], image_types: set[str]
+    workdir: Path,
+    layout: Path,
+    dbs: dict[str, Path],
+    image_types: set[str],
+    ignore_files: Optional[Mapping[str, Path]] = None,
 ) -> Path:
     """Lay out the files the volumes start with. Runfiles are symlinks, so
-    everything is copied for real; docker cp would copy the links."""
+    everything is copied for real; docker cp would copy the links.
+
+    Each image type gets its ignore file from ``ignore_files``, or else the
+    one built in for it."""
     staging = workdir / "staging"
     data = staging / "data"
     (data / "ignore").mkdir(parents=True)
     shutil.copy(registry.runfile(TRIVY_RUNFILE), data / "trivy")
     (data / "trivy").chmod(0o755)
+    ignore_files = ignore_files or {}
     for image_type in sorted(image_types):
-        src = registry.runfile(IGNORE_RUNFILE.format(image_type))
+        src = ignore_files.get(image_type) or registry.runfile(
+            IGNORE_RUNFILE.format(image_type)
+        )
         if not src.is_file():
             raise ScanError(f"no ignore file for {image_type}: {src}")
-        shutil.copy(src, data / "ignore" / src.name)
+        shutil.copy(src, data / "ignore" / f"{image_type}.trivyignore.yaml")
     # An empty config file stops Trivy looking for trivy.yaml elsewhere.
     (data / "trivy.yaml").write_text("")
     shutil.move(str(layout), data / "layout")
@@ -611,12 +627,14 @@ def _finish(
 def scan_group(
     targets: Sequence[Target],
     architecture: str,
-    store: ScanStore,
+    store: Store,
     results_dir: Path,
     workdir: Path,
     base_image: str,
     login: Callable[[], None] = lambda: None,
     report: Callable[[Target], None] = lambda target: None,
+    ignore_files: Optional[Mapping[str, Path]] = None,
+    stale_after: timedelta = STALE_AFTER,
 ) -> None:
     """Scan every target. Each one ends with a status record either way, and
     any failure, expected or not, becomes the affected images' error.
@@ -632,14 +650,22 @@ def scan_group(
         ready = [t for t in targets if not t.error]
         if ready:
             _scan_ready(
-                ready, architecture, store, results_dir, workdir, base_image, report
+                ready,
+                architecture,
+                store,
+                results_dir,
+                workdir,
+                base_image,
+                report,
+                ignore_files,
+                stale_after,
             )
     except Exception as e:
         # Logged even when every image is already final, e.g. a failed cleanup.
         logger.error(f"Scanning the group failed: {_describe(e)}")
         for target in targets:
             if not target.error and not target.scanned:
-                target.error = f"group failed before scanning: {_describe(e)}"
+                target.error = f"{GROUP_FAILED}: {_describe(e)}"
     finally:
         _finish_unreported(targets, results_dir, report)
 
@@ -664,11 +690,13 @@ def _finish_unreported(
 def _scan_ready(
     ready: Sequence[Target],
     architecture: str,
-    store: ScanStore,
+    store: Store,
     results_dir: Path,
     workdir: Path,
     base_image: str,
     report: Callable[[Target], None],
+    ignore_files: Optional[Mapping[str, Path]] = None,
+    stale_after: timedelta = STALE_AFTER,
 ) -> None:
     dbs: dict[str, Path] = {}
     pins: dict[str, Any] = {}
@@ -679,8 +707,8 @@ def _scan_ready(
     platform = f"linux/{OCI_ARCH[architecture]}"
     registry.pull(sorted({t.pinned_ref for t in ready}), layout, platform)
     check_layout(layout, {t.digest for t in ready})
-    staging = stage(workdir, layout, dbs, {t.image_type for t in ready})
-    with ContainedTrivy(base_image) as trivy:
+    staging = stage(workdir, layout, dbs, {t.image_type for t in ready}, ignore_files)
+    with ContainedTrivy(base_image, stale_after) as trivy:
         trivy.load(staging)
         shutil.rmtree(staging)
         try:

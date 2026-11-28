@@ -12,7 +12,9 @@ from ci.ray_ci.automation.trivy import scan_store
 from ci.ray_ci.automation.trivy.fake_s3 import FakeS3
 from ci.ray_ci.automation.trivy.scan_store import (
     BUCKET,
+    DB_FOLDER,
     MAX_POOL_CONNECTIONS,
+    LocalStore,
     ScanStore,
     StoreError,
     build_options,
@@ -186,6 +188,22 @@ def test_threads_share_one_client():
             clients = list(pool.map(lambda _: s._s3(), range(8)))
         assert scan_store.boto3.client.call_count == 1
     assert all(c is clients[0] for c in clients)
+
+
+def test_a_local_store_keeps_the_folders_in_a_directory(tmp_path: Path):
+    store = LocalStore(tmp_path / "work")
+    src = tmp_path / "metadata.json"
+    src.write_text("{}")
+    assert not store.exists(DB_FOLDER, "metadata.json")
+    assert store.names(DB_FOLDER) == []
+    store.upload(src, DB_FOLDER)
+    assert store.exists(DB_FOLDER, "metadata.json")
+    assert store.names(DB_FOLDER) == ["metadata.json"]
+    copy = store.download(DB_FOLDER, "metadata.json", tmp_path / "copy.json")
+    assert copy.read_text() == "{}"
+    assert store.url(DB_FOLDER) == f"{tmp_path / 'work' / 'db'}/"
+    with pytest.raises(StoreError, match="copy of .*missing.json failed"):
+        store.download(DB_FOLDER, "missing.json", tmp_path / "x")
 
 
 if __name__ == "__main__":

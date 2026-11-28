@@ -20,10 +20,11 @@ results as it finds them.
 
 import functools
 import re
+import shutil
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Union
 
 import boto3
 import click
@@ -169,6 +170,54 @@ class ScanStore:
 
         keys = self._call("listing of", prefix, list_keys)
         return sorted(k[len(prefix) :] for k in keys if "/" not in k[len(prefix) :])
+
+
+@dataclass
+class LocalStore:
+    """The same folders in a local directory, for scans outside CI
+    (local_scan_images): a ScanStore stand-in that needs no build or S3."""
+
+    root: Path
+
+    def path(self, folder: str, name: str) -> Path:
+        return self.root / folder / name
+
+    def url(self, folder: str = "") -> str:
+        return f"{self.root / folder}/" if folder else f"{self.root}/"
+
+    def _call(self, what: str, path: Path, call: Callable[[], Any]) -> Any:
+        try:
+            return call()
+        except OSError as e:
+            raise StoreError(f"{what} {path} failed: {e}") from e
+
+    def upload(self, path: Path, folder: str) -> str:
+        dest = self.path(folder, path.name)
+
+        def copy() -> None:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, dest)
+
+        self._call("copy to", dest, copy)
+        return str(dest)
+
+    def download(self, folder: str, name: str, dest: Path) -> Path:
+        src = self.path(folder, name)
+        self._call("copy of", src, lambda: shutil.copyfile(src, dest))
+        return dest
+
+    def exists(self, folder: str, name: str) -> bool:
+        return self.path(folder, name).is_file()
+
+    def names(self, folder: str) -> list[str]:
+        directory = self.root / folder
+        if not directory.is_dir():
+            return []
+        return sorted(p.name for p in directory.iterdir() if p.is_file())
+
+
+# What trivy_db and scan_images take: a build's S3 folder, or a local one.
+Store = Union[ScanStore, LocalStore]
 
 
 def build_options(f: Callable[..., Any]) -> Callable[..., Any]:
