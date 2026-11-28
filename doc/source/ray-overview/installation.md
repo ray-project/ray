@@ -292,7 +292,7 @@ Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform
   - The most recent Ray development build (a recent commit from Github `master`)
 ```
 
-The optional `Python version` tag specifies the Python version in the image. All Python versions that Ray publishes images for are available, e.g. `py311`, `py312` and `py313`. If unspecified, the tag points to an image using `Python 3.11`. Starting with Ray 2.61, Ray doesn't publish `py310` images.
+The optional `Python version` tag specifies the Python version in the image. All Python versions that Ray publishes images for are available, e.g. `py311`, `py312` and `py313`. If unspecified, `-cpu` and GPU tags point to an image using `Python 3.11`. Starting with Ray 2.61 (and nightly builds), `-tpu` tags default to `Python 3.12`, and Ray doesn't publish `py310` images.
 
 The optional `Platform` tag specifies the platform where the image is intended for:
 
@@ -304,6 +304,8 @@ The optional `Platform` tag specifies the platform where the image is intended f
   - Description
 * - -cpu
   - These are based off of an Ubuntu image.
+* - -tpu
+  - These are based off of an Ubuntu image with Google Cloud TPU dependencies (JAX, `libtpu`, Flax, Optax, Orbax, and on Python 3.12+ PyTorch and TorchTPU). Published for `nightly` builds and Ray 2.61+ releases. When pairing CPU head nodes with `-tpu` workers in KubeRay, use a matching Python version such as `-py312-cpu`.
 * - -cuXX
   - These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the NVIDIA Docker Runtime.
 * - -gpu

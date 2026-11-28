@@ -6,7 +6,10 @@ from unittest import mock
 
 import pytest
 
-from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
+from ci.ray_ci.configs import (
+    DEFAULT_PYTHON_TAG_VERSION,
+    DEFAULT_TPU_PYTHON_TAG_VERSION,
+)
 from ci.ray_ci.container import _DOCKER_ECR_REPO
 from ci.ray_ci.docker_container import GPU_PLATFORM
 from ci.ray_ci.ray_docker_container import RayDockerContainer
@@ -300,6 +303,41 @@ class TestRayDockerContainer(RayCITestBase):
                 "nightly-cpu",
                 f"nightly-{pv}",
                 "nightly",
+            ]
+
+    def test_get_image_tags_tpu_default_python(self) -> None:
+        sha = "123456"
+        rayci_build_id = "a1b2c3d4"
+        formatted_date = datetime.now().strftime("%y%m%d")
+
+        tpu_default = RayDockerContainer(DEFAULT_TPU_PYTHON_TAG_VERSION, "tpu", "ray")
+        tpu_default_pv = self.get_python_version(DEFAULT_TPU_PYTHON_TAG_VERSION)
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
+            assert tpu_default._get_image_tags(external=True) == [
+                f"{sha}-{tpu_default_pv}-tpu",
+                f"{sha}-tpu",
+                f"{rayci_build_id}-{tpu_default_pv}-tpu",
+                f"{rayci_build_id}-tpu",
+            ]
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
+            assert tpu_default._get_image_tags(external=True) == [
+                f"nightly.{formatted_date}.{sha}-{tpu_default_pv}-tpu",
+                f"nightly.{formatted_date}.{sha}-tpu",
+                f"nightly-{tpu_default_pv}-tpu",
+                "nightly-tpu",
+            ]
+
+        tpu_py311 = RayDockerContainer(DEFAULT_PYTHON_TAG_VERSION, "tpu", "ray")
+        tpu_py311_pv = self.get_python_version(DEFAULT_PYTHON_TAG_VERSION)
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "daytime"}):
+            assert tpu_py311._get_image_tags(external=True) == [
+                f"{sha}-{tpu_py311_pv}-tpu",
+                f"{rayci_build_id}-{tpu_py311_pv}-tpu",
+            ]
+        with mock.patch.dict(os.environ, {"RAYCI_SCHEDULE": "nightly"}):
+            assert tpu_py311._get_image_tags(external=True) == [
+                f"nightly.{formatted_date}.{sha}-{tpu_py311_pv}-tpu",
+                f"nightly-{tpu_py311_pv}-tpu",
             ]
 
     def test_get_image_name(self) -> None:

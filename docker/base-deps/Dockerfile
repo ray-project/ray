@@ -150,8 +150,13 @@ uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-ma
 # We install cmake temporarily to get psutil
 sudo apt-get autoremove -y cmake zlib1g-dev
 
-# We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-if [[ ! -d /usr/local/cuda ]]; then
+if [[ "${PYTHON_DEPSET}" == *tpu* ]]; then
+    sudo apt-get update -y
+    sudo apt-get install -y --no-install-recommends libgoogle-perftools4
+fi
+
+# We keep g++ on GPU and TPU images
+if [[ ! -d /usr/local/cuda && "${PYTHON_DEPSET}" != *tpu* ]]; then
     sudo apt-get autoremove -y g++
 fi
 

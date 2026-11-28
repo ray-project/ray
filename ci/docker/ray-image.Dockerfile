@@ -45,8 +45,74 @@ echo "Installing wheel: $WHEEL_FILE"
 
 if [[ "${IMAGE_TYPE}" == "ray-llm" ]]; then
   RAY_EXTRAS="default,data,serve"
+elif [[ "${PLATFORM}" == "tpu" ]]; then
+  # Exclude cgraph/adag (cupy-cuda12x) and non-all extras (cpp/llm) on TPU.
+  RAY_EXTRAS="$($HOME/anaconda3/bin/python - "${WHEEL_FILE}" <<'PYEOF'
+import email
+import sys
+import zipfile
+
+excluded = {"all", "all-cpp", "cpp", "llm", "cgraph", "adag"}
+with zipfile.ZipFile(sys.argv[1]) as whl:
+    meta_name = next(n for n in whl.namelist() if n.endswith(".dist-info/METADATA"))
+    msg = email.message_from_bytes(whl.read(meta_name))
+extras = sorted(
+    {e.strip() for e in msg.get_all("Provides-Extra", []) if e.strip() not in excluded}
+)
+if not extras:
+    raise RuntimeError(f"No Ray extras found in {meta_name}")
+print(",".join(extras))
+PYEOF
+)"
 else
   RAY_EXTRAS="all"
+fi
+
+# Overlay Stage 1 installed packages onto requirements_compiled.txt by normalized
+# package name so Stage 2 preserves security/base constraints while keeping TPU pins.
+if [[ "${PLATFORM}" == "tpu" ]]; then
+    STAGE1_FREEZE="$(mktemp)"
+    $HOME/anaconda3/bin/pip list --format=freeze > "${STAGE1_FREEZE}"
+    $HOME/anaconda3/bin/python - "${STAGE1_FREEZE}" /home/ray/requirements_compiled.txt <<'PYEOF'
+import pathlib
+import re
+import sys
+
+def norm(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+def pkg_key(line: str) -> str:
+    head = line.split(" @ ", 1)[0]
+    head = re.split(r"[=<>!~;\s\[]", head, 1)[0]
+    return norm(head)
+
+freeze_lines = [
+    ln.strip()
+    for ln in pathlib.Path(sys.argv[1]).read_text().splitlines()
+    if ln.strip() and not ln.strip().startswith("#")
+]
+frozen = {pkg_key(ln): ln for ln in freeze_lines}
+
+base_path = pathlib.Path(sys.argv[2])
+kept = []
+skipping = False
+for ln in base_path.read_text().splitlines():
+    stripped = ln.strip()
+    if skipping:
+        skipping = stripped.endswith("\\")
+        continue
+    if not stripped or stripped.startswith(("#", "-")):
+        kept.append(ln)
+        continue
+    if pkg_key(stripped) in frozen:
+        skipping = stripped.endswith("\\")
+        continue
+    kept.append(ln)
+
+merged = kept + freeze_lines
+base_path.write_text("\n".join(merged) + "\n")
+PYEOF
+    rm -f "${STAGE1_FREEZE}"
 fi
 
 # TODO(cu130): ray[all]'s cgraph extra hard-pins cupy-cuda12x, so this install

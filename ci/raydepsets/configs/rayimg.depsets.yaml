@@ -244,15 +244,45 @@ depsets:
       - py314
     include_setuptools: true
 
-  # TPU base deps: extends CPU base deps with jax[tpu] dependencies
+  # TPU variant of the core ray image deps: drop CUDA packages and relax
+  # shared pins so TPU JAX/PyTorch builds and conda-lockfiles resolve cleanly.
+  - name: ray_img_tpu_${PYTHON_SHORT}
+    operation: relax
+    source_depset: ray_img_depset_${PYTHON_SHORT}
+    packages:
+      - cupy-cuda12x
+      - fastrlock
+      - fsspec
+      - pydantic
+      - pydantic-core
+      - urllib3
+    output: python/deplocks/ray_img/ray_img_tpu_py${PYTHON_SHORT}.lock
+    build_arg_sets:
+      - py311
+      - py312
+      - py313
+
+  - name: ray_img_tpu_${PYTHON_SHORT}
+    operation: relax
+    source_depset: ray_img_depset_${PYTHON_SHORT}
+    packages:
+      - cuda-pathfinder
+      - cupy-cuda12x
+      - fsspec
+      - urllib3
+    output: python/deplocks/ray_img/ray_img_tpu_py${PYTHON_SHORT}.lock
+    build_arg_sets:
+      - py314
+
+  # TPU base deps: extends relaxed Ray image deps with TPU JAX/PyTorch dependencies
   - name: ray_base_deps_tpu_${PYTHON_SHORT}
     operation: expand
     requirements:
       - docker/base-deps/requirements.in
       - docker/base-deps/requirements_tpu.in
     depsets:
-      - ray_img_depset_${PYTHON_SHORT}
-    # Not constrained by requirements_compiled, so apply the security floors here.
+      - ray_img_tpu_${PYTHON_SHORT}
+    # Apply the security floors explicitly since ray_img_tpu relaxes shared pins.
     constraints:
       - python/requirements/security-requirements.txt
     output: python/deplocks/base_deps/ray_base_deps_tpu_py${PYTHON_VERSION}.lock
@@ -260,9 +290,9 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=x86_64-manylinux_2_31
+      - --index https://download.pytorch.org/whl/cpu
       - --index https://storage.googleapis.com/libtpu-releases/index.html
     build_arg_sets:
-      - py310
       - py311
       - py312
       - py313

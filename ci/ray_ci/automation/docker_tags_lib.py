@@ -15,7 +15,11 @@ from ci.ray_ci.automation.crane_lib import (
     call_crane_index,
     call_crane_manifest,
 )
-from ci.ray_ci.configs import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_TAG_VERSION
+from ci.ray_ci.configs import (
+    DEFAULT_ARCHITECTURE,
+    DEFAULT_PYTHON_TAG_VERSION,
+    DEFAULT_TPU_PYTHON_TAG_VERSION,
+)
 from ci.ray_ci.docker_container import (
     ARCHITECTURES_RAY,
     ARCHITECTURES_RAY_LLM,
@@ -102,7 +106,12 @@ def list_image_tag_suffixes(
     platform_tags = [_get_platform_tag(platform)]
     architecture_tags = [_get_architecture_tag(architecture)]
 
-    if python_version == DEFAULT_PYTHON_TAG_VERSION:
+    default_python_version = (
+        DEFAULT_TPU_PYTHON_TAG_VERSION
+        if platform == "tpu"
+        else DEFAULT_PYTHON_TAG_VERSION
+    )
+    if python_version == default_python_version:
         python_version_tags.append("")
     if platform == "cpu" and ray_type == RayType.RAY:
         platform_tags.append("")  # no tag is alias to cpu for ray image
