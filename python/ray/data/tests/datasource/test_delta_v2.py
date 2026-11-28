@@ -507,22 +507,13 @@ def test_generated_id_resume_of_the_latest_version(checkpointed_table, tmp_path)
     assert written_rows() == 20
 
 
-def test_falls_back_to_v1_with_pyarrow_scan_options(partitioned_table, monkeypatch):
-    """The V1 reader takes them. The table is opened once, on the driver."""
-    opened = []
-
-    class _RecordingTable(deltalake.DeltaTable):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            opened.append(self.version())
-
-    monkeypatch.setattr(deltalake, "DeltaTable", _RecordingTable)
-
+def test_reads_with_pyarrow_scan_options_on_v2(partitioned_table):
+    """Options that only tuned V1's reading are ignored, not a reason to read
+    with V1."""
     ds = _read(partitioned_table, batch_size=2)
 
-    assert not _uses_v2(ds)
+    assert _uses_v2(ds)
     assert len(ds.take_all()) == 8
-    assert opened == [1]
 
 
 def test_read_delta_rejects_data_files_outside_the_table(tmp_path):
