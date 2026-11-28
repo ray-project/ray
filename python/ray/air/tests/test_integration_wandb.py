@@ -66,7 +66,7 @@ from ray.exceptions import RayActorError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
-@pytest.fixture(autouse=True, scope="module")
+@pytest.fixture(scope="module")
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
     yield address_info
@@ -112,6 +112,7 @@ FAKE_WANDB_POPULATE_RUN_LOCATION_HOOK_IMPORT_PATH = (
 )
 
 
+@pytest.mark.usefixtures("ray_start_2_cpus")
 class TestWandbLogger:
     def test_wandb_logger_project_group(self, monkeypatch):
         monkeypatch.setenv(WANDB_PROJECT_ENV_VAR, "test_project_from_env_var")
@@ -518,6 +519,24 @@ class TestWandbLogger:
 
         assert len(logger._trial_logging_futures) == 1
         assert len(logger._logging_future_to_trial) == 1
+
+
+def test_wandb_destructor_after_ray_module_is_cleared():
+    logger = WandbLoggerCallback(project="test_project")
+    logger._trial_queues["trial"] = Mock()
+
+    # Python can clear module globals before finalizing the callback.
+    with patch("ray.air.integrations.wandb.ray", None):
+        logger.__del__()
+
+    assert not logger._trial_queues
+
+
+def test_wandb_destructor_after_failed_init(ray_start_2_cpus):
+    # Simulate `__init__` raising before any attribute was set.
+    logger = WandbLoggerCallback.__new__(WandbLoggerCallback)
+
+    logger.__del__()
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
